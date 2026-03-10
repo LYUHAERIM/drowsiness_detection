@@ -1,10 +1,13 @@
 import platform
+import random
+from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
 import warnings
 from matplotlib import font_manager, rc
+from PIL import Image
 warnings.filterwarnings('ignore')
 
 def set_korean_font(verbose: bool = False) -> bool:
@@ -243,3 +246,46 @@ def heatmap_plot(data, ax=None, figsize=(12, 8), cmap='Blues', annot=True, fmt='
         plt.tight_layout()
         plt.show()
     return ax
+
+
+def sample_images_plot(dataset_path, n: int = 16, cols: int = 8, figsize_per_img: tuple = (2.5, 2.5), seed: int = None, show: bool = True):
+    """
+    dataset_path 하위의 이미지를 n장 랜덤 샘플링해서 시각화
+    - dataset_path: 이미지 파일 또는 클래스 폴더가 담긴 루트 경로 (str or Path)
+    - n: 샘플링할 이미지 수
+    - cols: 한 행에 표시할 이미지 수
+    - figsize_per_img: 이미지 한 장당 figsize 크기
+    - seed: 랜덤 시드
+    """
+    dataset_path = Path(dataset_path)
+    exts = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
+    all_imgs = [p for p in dataset_path.rglob('*') if p.suffix.lower() in exts]
+
+    if not all_imgs:
+        raise FileNotFoundError(f"이미지 파일 없음: {dataset_path}")
+
+    random.seed(seed)
+    sampled = random.sample(all_imgs, min(n, len(all_imgs)))
+
+    cols = min(cols, len(sampled))
+    rows = (len(sampled) + cols - 1) // cols
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * figsize_per_img[0], rows * figsize_per_img[1]))
+    axes = np.array(axes).flatten()
+
+    for ax, img_path in zip(axes, sampled):
+        img = Image.open(img_path)
+        label = img_path.parent.name
+        ax.imshow(img, cmap='gray' if img.mode == 'L' else None)
+        ax.set_title(label, fontsize=7)
+        ax.axis('off')
+
+    for ax in axes[len(sampled):]:
+        ax.axis('off')
+
+    plt.suptitle(f"{dataset_path.name}  |  샘플 {len(sampled)}장", fontsize=11)
+    plt.tight_layout()
+
+    if show:
+        plt.show()
+        return None
+    return fig
