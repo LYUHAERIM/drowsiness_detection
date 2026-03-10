@@ -13,6 +13,9 @@ wheels/
 # dataset
 /data
 
+# mediapipe models
+*.task
+
 # claude.md
 *CLAUDE.md
 *.claude
