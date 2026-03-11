@@ -1,7 +1,7 @@
 import cv2
 import os
 
-def extract_frames_video(video_path, output_dir, interval_sec=1):
+def extract_frames_video(video_path, output_dir, interval_sec=1, prefix=None):
     """
     영상(mp4)에서 일정 간격으로 프레임을 추출하는 함수
 
@@ -9,10 +9,14 @@ def extract_frames_video(video_path, output_dir, interval_sec=1):
         video_path (str): 영상 파일 경로
         output_dir (str): 프레임 저장 폴더
         interval_sec (int): 몇 초마다 프레임 추출할지 (default=1초)
+        prefix (str): 저장 파일명 접두사 (default: None → 영상 파일명 사용)
     """
 
     os.makedirs(output_dir, exist_ok=True)
-    cap = cv2.VideoCapture(video_path)
+    cap = cv2.VideoCapture(str(video_path))
+
+    if prefix is None:
+        prefix = os.path.splitext(os.path.basename(video_path))[0]
 
     fps = cap.get(cv2.CAP_PROP_FPS)
     frame_interval = int(fps * interval_sec)
@@ -26,7 +30,7 @@ def extract_frames_video(video_path, output_dir, interval_sec=1):
             break
 
         if frame_id % frame_interval == 0:
-            save_path = os.path.join(output_dir, f"frame_{saved_id}.jpg")
+            save_path = os.path.join(output_dir, f"{prefix}_frame_{saved_id}.jpg")
             cv2.imwrite(save_path, frame)
             saved_id += 1
 

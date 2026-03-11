@@ -248,6 +248,86 @@ def heatmap_plot(data, ax=None, figsize=(12, 8), cmap='Blues', annot=True, fmt='
     return ax
 
 
+def yolo_val_plot(
+    img_dir,
+    label_dir,
+    model,
+    class_names: dict,
+    class_colors: dict = None,
+    n: int = 4,
+    conf: float = 0.5,
+    figsize_per_img: tuple = (6, 4),
+    show: bool = True,
+):
+    """
+    val 이미지에서 GT(초록)와 Prediction(빨강)을 한 행에 나란히 비교 시각화.
+    행: 샘플 이미지 수 / 열: [GT | Pred] 고정 2열
+    - img_dir: val 이미지 폴더
+    - label_dir: val 라벨(.txt) 폴더
+    - model: 학습된 YOLO 객체
+    - class_names: {0: 'person_on', ...}
+    - n: 샘플 이미지 수
+    """
+    import matplotlib.patches as patches
+    from src.models.yolo_trainer import predict
+
+    if class_colors is None:
+        class_colors = {0: "cyan", 1: "red", 2: "purple"}
+
+    img_dir = Path(img_dir)
+    label_dir = Path(label_dir)
+
+    img_paths = [p for p in img_dir.glob("*.jpg") if (label_dir / (p.stem + ".txt")).exists()]
+    if not img_paths:
+        raise FileNotFoundError(f"이미지-라벨 매칭 파일 없음\n  img_dir:   {img_dir}\n  label_dir: {label_dir}")
+
+    sampled = random.sample(img_paths, min(n, len(img_paths)))
+
+    fig, axes = plt.subplots(len(sampled), 2, figsize=(figsize_per_img[0] * 2, figsize_per_img[1] * len(sampled)))
+    if len(sampled) == 1:
+        axes = [axes]
+
+    for row, img_path in enumerate(sampled):
+        img = np.array(Image.open(img_path).convert("RGB"))
+        h, w = img.shape[:2]
+        label_path = label_dir / (img_path.stem + ".txt")
+
+        # 왼쪽: GT
+        ax_gt = axes[row][0]
+        ax_gt.imshow(img)
+        for line in label_path.read_text().strip().splitlines():
+            cls, cx, cy, bw, bh = map(float, line.split())
+            cls = int(cls)
+            x1 = int((cx - bw / 2) * w)
+            y1 = int((cy - bh / 2) * h)
+            x2 = int((cx + bw / 2) * w)
+            y2 = int((cy + bh / 2) * h)
+            color = class_colors.get(cls, "white")
+            ax_gt.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=1.5, edgecolor=color, facecolor="none"))
+            ax_gt.text(x1, max(y1 - 4, 0), class_names.get(cls, str(cls)), color=color, fontsize=7, fontweight="bold")
+        ax_gt.set_title(f"GT  |  {img_path.name}", fontsize=7)
+        ax_gt.axis("off")
+
+        # 오른쪽: Pred
+        ax_pred = axes[row][1]
+        ax_pred.imshow(img)
+        for det in predict(model, str(img_path), conf=conf):
+            x1, y1, x2, y2 = [int(v) for v in det["bbox"]]
+            color = class_colors.get(det["class_id"], "white")
+            ax_pred.add_patch(patches.Rectangle((x1, y1), x2 - x1, y2 - y1, linewidth=1.5, edgecolor=color, facecolor="none"))
+            ax_pred.text(x1, max(y1 - 4, 0), f"{det['class_name']} {det['confidence']:.2f}", color=color, fontsize=7)
+        ax_pred.set_title(f"Pred  |  {img_path.name}", fontsize=7)
+        ax_pred.axis("off")
+
+    plt.suptitle(f"GT vs Prediction  |  샘플 {len(sampled)}장", fontsize=11)
+    plt.tight_layout()
+
+    if show:
+        plt.show()
+        return None
+    return fig
+
+
 def sample_images_plot(dataset_path, n: int = 16, cols: int = 8, figsize_per_img: tuple = (2.5, 2.5), seed: int = None, show: bool = True):
     """
     dataset_path 하위의 이미지를 n장 랜덤 샘플링해서 시각화

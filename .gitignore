@@ -5,10 +5,20 @@ build/
 dist/
 wheels/
 *.egg-info
-*.DS_Store
+
+# macOS
+.DS_Store
 
 # Virtual environments
 .venv
+
+# secrets
+.env
+*.env
+
+# Jupyter
+.ipynb_checkpoints/
+jupyter/.ipynb_checkpoints/
 
 # dataset
 /data
@@ -16,6 +26,22 @@ wheels/
 # mediapipe models
 *.task
 
-# claude.md
+# yolo pretrained weights
+*.pt
+
+# model checkpoint
+checkpoint/
+
+# runs (yolo 학습 결과 로컬 저장 시)
+runs/
+
+# wandb
+wandb/
+
+# google drive desktop
+/.tmp.drivedownload
+/.tmp.driveupload
+
+# claude
 *CLAUDE.md
 *.claude
