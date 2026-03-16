@@ -22,6 +22,7 @@ jupyter/.ipynb_checkpoints/
 
 # dataset
 /data
+*.mp4
 
 # mediapipe models
 *.task
@@ -45,3 +46,6 @@ wandb/
 # claude
 *CLAUDE.md
 *.claude
+
+# jupyter
+jupyter/
