@@ -48,6 +48,9 @@ wandb/
 *CLAUDE.md
 *.claude
 
+# gemini
+*GEMINI.md
+
 # jupyter
 jupyter/
 
