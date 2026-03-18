@@ -443,11 +443,11 @@ class ZoomPipeline:
 if __name__ == "__main__":
     load_env()
 
-    CHECKPOINT       = Path("checkpoint/yolo11n/weights/best.pt")
-    VIDEO_PATH       = Path("data/video/TestVideo2.mp4")
-    OUTPUT_VIDEO     = Path("data/video/output.mp4")
-    OUTPUT_FRAME_CSV = Path("data/video/frame_features.csv")
-    OUTPUT_TRACK_CSV = Path("data/video/track_summary.csv")
+    CHECKPOINT   = Path("/content/drive/MyDrive/drowsiness/drowsiness_detection/model/yolov11n_best.pt")
+    VIDEO_PATH   = Path("/content/drive/MyDrive/drowsiness/drowsiness_detection/video/TestVideo_acting.mp4")
+    OUTPUT_VIDEO = Path("/content/drive/MyDrive/drowsiness/output/output.mp4")
+    OUTPUT_FRAME_CSV = Path("/content/drive/MyDrive/drowsiness/output/frame_features.csv")
+    OUTPUT_TRACK_CSV = Path("/content/drive/MyDrive/drowsiness/output/track_summary.csv")
 
     assert CHECKPOINT.exists(), f"YOLO 체크포인트 없음: {CHECKPOINT}"
     assert VIDEO_PATH.exists(), f"입력 영상 없음: {VIDEO_PATH}"

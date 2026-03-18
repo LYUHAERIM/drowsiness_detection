@@ -137,8 +137,8 @@ class FaceMeshDetector:
     """
     MediaPipe legacy FaceMesh + FaceDetection 기반 얼굴 특징 추출기.
 
-    Level1: FaceMesh → EAR, MAR, pitch_like, tilt_deg, face_center_y
-    Level2: FaceDetection fallback → face_center_y (lm_ok=False일 때)
+    FaceLandmarker (Tasks API) 기반으로 EAR, MAR, pitch_like, tilt_deg,
+    face_center_y를 한 번에 반환합니다.
 
     CLAHE 전처리로 어두운 환경 대응. 특징 추출 로직을 바꾸려면
     이 클래스만 수정하면 됩니다.
@@ -155,17 +155,14 @@ class FaceMeshDetector:
         min_tracking_confidence: float = 0.25,
         use_clahe: bool = True,
     ):
-        self._face_mesh = mp.solutions.face_mesh.FaceMesh(
-            static_image_mode=True,
-            max_num_faces=1,
-            refine_landmarks=False,
-            min_detection_confidence=min_detection_confidence,
+        options = vision.FaceLandmarkerOptions(
+            base_options=mp_python.BaseOptions(model_asset_path=_ensure_model()),
+            num_faces=1,
+            min_face_detection_confidence=min_detection_confidence,
             min_tracking_confidence=min_tracking_confidence,
+            running_mode=vision.RunningMode.IMAGE,
         )
-        self._face_detection = mp.solutions.face_detection.FaceDetection(
-            model_selection=0,
-            min_detection_confidence=min_detection_confidence,
-        )
+        self._detector = vision.FaceLandmarker.create_from_options(options)
         self._use_clahe = use_clahe
         self._clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 
@@ -226,15 +223,15 @@ class FaceMeshDetector:
         h, w = up.shape[:2]
         rgb = cv2.cvtColor(up, cv2.COLOR_BGR2RGB)
 
-        # Level1: FaceMesh
         ear = mar = pitch_like = tilt_deg = _nan
         face_box = None
         lm_ok = False
 
-        mesh_res = self._face_mesh.process(rgb)
-        if mesh_res.multi_face_landmarks:
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = self._detector.detect(mp_image)
+        if result.face_landmarks:
             lm_ok = True
-            lm = mesh_res.multi_face_landmarks[0].landmark
+            lm = result.face_landmarks[0]
 
             le = self._ear_single(lm, _LEFT_EYE_IDX, w, h)
             re = self._ear_single(lm, _RIGHT_EYE_IDX, w, h)
@@ -264,7 +261,6 @@ class FaceMeshDetector:
                 min(w0, int(xs.max() / scale)), min(h0, int(ys.max() / scale)),
             )
 
-        # Level2: FaceDetection fallback → face_center_y
         face_center_y = _nan
         face_ok = False
 
@@ -272,15 +268,6 @@ class FaceMeshDetector:
             _, fy1, _, fy2 = face_box
             face_center_y = ((fy1 + fy2) / 2.0) / h0
             face_ok = True
-        else:
-            det_res = self._face_detection.process(rgb)
-            if det_res.detections:
-                d = det_res.detections[0]
-                b = d.location_data.relative_bounding_box
-                fy1 = int(b.ymin * h)
-                fy2 = int((b.ymin + b.height) * h)
-                face_center_y = ((fy1 + fy2) / 2.0) / h
-                face_ok = True
 
         return FaceMeshResult(
             lm_ok=lm_ok, face_ok=face_ok,
@@ -291,8 +278,7 @@ class FaceMeshDetector:
         )
 
     def close(self):
-        self._face_mesh.close()
-        self._face_detection.close()
+        self._detector.close()
 
     def __enter__(self):
         return self
