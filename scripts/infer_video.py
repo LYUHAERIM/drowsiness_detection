@@ -38,6 +38,7 @@ from src.detection.drowsiness import (
     update_drowsiness_state,
 )
 from src.detection.face import FaceMeshDetector
+from src.detection.pose import PoseDetector
 from src.ocr.reader import NameOCR
 from src.tracking.slot import (
     SlotState,
@@ -114,6 +115,11 @@ class PipelineConfig:
     face_min_conf: float = 0.25
     use_clahe: bool = True
 
+    # Pose fallback (FaceMesh lm_ok=False일 때 PoseDetector로 고개 숙임 감지)
+    use_pose_fallback: bool = False
+    pose_conf: float = 0.5          # PoseDetector 검출 최소 신뢰도
+    pose_consec_frames: int = 90    # 연속 감지 프레임 수 (≈3초 @ 30fps)
+
     # 졸음 감지 (세부 임계값)
     drowsiness: DrowsinessConfig = field(default_factory=DrowsinessConfig)
 
@@ -154,6 +160,7 @@ class ZoomPipeline:
         self._model = yolo_model
         self._cfg = config or PipelineConfig()
         self._face_detector: Optional[FaceMeshDetector] = None
+        self._pose_detector: Optional[PoseDetector] = None
         self._ocr: Optional[NameOCR] = None
 
         self._slots: dict[int, SlotState] = {}
@@ -161,6 +168,7 @@ class ZoomPipeline:
         self._prev_layout_summary: Optional[dict] = None
         self._last_layout_change_frame = -(10 ** 9)
         self._layout_boost_until = -1
+        self._pose_consec: dict[int, int] = {}  # slot_id → 연속 pose_head_down 프레임 수
 
     # ── 컨텍스트 매니저 ───────────────────────────────────────────────────────
 
@@ -170,6 +178,10 @@ class ZoomPipeline:
             min_detection_confidence=cfg.face_min_conf,
             use_clahe=cfg.use_clahe,
         )
+        if cfg.use_pose_fallback:
+            self._pose_detector = PoseDetector(
+                min_detection_confidence=cfg.pose_conf,
+            )
         self._ocr = NameOCR(
             teacher_names=cfg.teacher_names,
             gpu=isinstance(cfg.device, int),
@@ -179,6 +191,8 @@ class ZoomPipeline:
     def close(self):
         if self._face_detector:
             self._face_detector.close()
+        if self._pose_detector:
+            self._pose_detector.close()
 
     def __enter__(self) -> "ZoomPipeline":
         return self.open()
@@ -257,6 +271,7 @@ class ZoomPipeline:
         for sid in list(self._slots.keys()):
             if self._slots[sid].misses > cfg.slot_max_misses:
                 del self._slots[sid]
+                self._pose_consec.pop(sid, None)
 
         # ── 캔버스 초기화 ─────────────────────────────────────────────────────
         canvas = np.zeros((frame_h, frame_w + cfg.info_box_w, 3), dtype=np.uint8)
@@ -288,6 +303,19 @@ class ZoomPipeline:
 
             # 얼굴 특징 추출
             face_result = self._face_detector.detect(thumb, det["cls"])
+
+            # Pose fallback: FaceMesh 랜드마크 검출 실패 시 고개 숙임 보조 감지
+            if self._pose_detector is not None and not face_result.lm_ok:
+                pose_result = self._pose_detector.detect(thumb)
+                if pose_result is not None and pose_result.head_down:
+                    self._pose_consec[sid] = self._pose_consec.get(sid, 0) + 1
+                else:
+                    self._pose_consec[sid] = max(0, self._pose_consec.get(sid, 0) - 1)
+                face_result.pose_head_down = (
+                    self._pose_consec.get(sid, 0) >= self._cfg.pose_consec_frames
+                )
+            else:
+                self._pose_consec[sid] = max(0, self._pose_consec.get(sid, 0) - 1)
 
             # 모션
             curr_gray = cv2.cvtColor(thumb, cv2.COLOR_BGR2GRAY) if thumb.size > 0 else None

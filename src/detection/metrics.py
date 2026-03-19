@@ -4,7 +4,10 @@ import numpy as np
 # https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
 LEFT_EYE = [362, 385, 387, 263, 373, 380]
 RIGHT_EYE = [33,  160, 158, 133, 153, 144]
-MOUTH = [61,  291, 39,  181, 0,   17,  269, 405]
+_MOUTH_TOP   = 13   # 윗입술 중앙
+_MOUTH_BOT   = 14   # 아랫입술 중앙
+_MOUTH_LEFT  = 78   # 왼쪽 입꼬리
+_MOUTH_RIGHT = 308  # 오른쪽 입꼬리
 
 
 def _dist(a: np.ndarray, b: np.ndarray) -> float:
@@ -25,15 +28,10 @@ def ear(landmarks_px: np.ndarray, eye_indices: list[int]) -> float:
 def mar(landmarks_px: np.ndarray) -> float:
     """
     Mouth Aspect Ratio (입 종횡비)
-    - 값이 클수록 입이 벌어진 상태 (하품)
+    - 0에 가까울수록 입이 닫힌 상태, 클수록 입이 벌어진 상태 (하품)
     """
-    p = landmarks_px[MOUTH]
-    vertical = (
-        _dist(p[2], p[6]) +
-        _dist(p[3], p[7]) +
-        _dist(p[4], p[5])
-    ) / 3
-    horizontal = _dist(p[0], p[1])
+    vertical   = _dist(landmarks_px[_MOUTH_TOP], landmarks_px[_MOUTH_BOT])
+    horizontal = _dist(landmarks_px[_MOUTH_LEFT], landmarks_px[_MOUTH_RIGHT])
     return vertical / (horizontal + 1e-6)
 
 

@@ -285,6 +285,10 @@ def update_drowsiness_state(
     if not drowsy_reason and face_flag:
         drowsy_reason = "L2_face_low"
 
+    # Level2.5: Pose fallback (lm_ok=False일 때 PoseDetector가 고개 숙임 감지)
+    if not drowsy_reason and not lm_ok and face_result.pose_head_down:
+        drowsy_reason = "L2_pose_head_down"
+
     # Level3: motion hold
     low_motion = not _isnan(motion) and motion < cfg.low_motion_th
     if slot.current_state == "DROWSY" and not drowsy_reason:

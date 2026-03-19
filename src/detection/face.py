@@ -131,6 +131,7 @@ class FaceMeshResult:
     tilt_deg: float
     face_center_y: float
     face_box: Optional[tuple]
+    pose_head_down: bool = False  # Pose fallback 고개 숙임 감지 결과
 
 
 class FaceMeshDetector:
