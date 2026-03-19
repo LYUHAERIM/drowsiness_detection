@@ -486,7 +486,7 @@ if __name__ == "__main__":
         teacher_names=["강경미"],
         start_sec=0,
         end_sec=120,
-        target_fps=10.0,
+        target_fps=10.0, # 이거 수정해서 fps 변경
         drowsiness=DrowsinessConfig(
             ear_hold_strong_sec=0.5,
             ear_hold_weak_sec=1.5,

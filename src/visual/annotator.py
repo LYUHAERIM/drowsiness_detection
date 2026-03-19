@@ -188,10 +188,38 @@ def draw_info_box(
     cv2.rectangle(canvas, (ix, iy), (ix + box_w, iy + ibox_h), (30, 30, 30), -1)
     cv2.rectangle(canvas, (ix, iy), (ix + box_w, iy + ibox_h), state_color, 1)
 
+    # for li, line in enumerate(info_lines):
+    #     ty = iy + INFO_BOX_PAD + (li + 1) * INFO_LINE_H - 2
+    #     cv2.putText(
+    #         canvas, str(line),
+    #         (ix + INFO_BOX_PAD, ty),
+    #         _FONT, 0.40, (220, 220, 220), 1, cv2.LINE_AA,
+    #     )
+
+# 1. 먼저 한글이 없는 줄(영문/숫자)을 OpenCV로 캔버스에 모두 그립니다.
     for li, line in enumerate(info_lines):
-        ty = iy + INFO_BOX_PAD + (li + 1) * INFO_LINE_H - 2
-        cv2.putText(
-            canvas, str(line),
-            (ix + INFO_BOX_PAD, ty),
-            _FONT, 0.40, (220, 220, 220), 1, cv2.LINE_AA,
-        )
+        line_str = str(line)
+        if not _contains_korean(line_str):
+            ty = iy + INFO_BOX_PAD + (li + 1) * INFO_LINE_H - 2
+            cv2.putText(
+                canvas, line_str,
+                (ix + INFO_BOX_PAD, ty),
+                _FONT, 0.40, (220, 220, 220), 1, cv2.LINE_AA,
+            )
+
+    # 2. 영문이 다 그려진 캔버스를 가져와서, 한글이 포함된 줄만 PIL로 추가로 그립니다.
+    has_korean = any(_contains_korean(str(l)) for l in info_lines)
+    if has_korean:
+        from PIL import Image, ImageDraw
+        pil = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
+        d = ImageDraw.Draw(pil)
+        font = _pil_font(13)  # 폰트 크기 미세 조정
+
+        for li, line in enumerate(info_lines):
+            line_str = str(line)
+            if _contains_korean(line_str):
+                ty = iy + INFO_BOX_PAD + (li + 1) * INFO_LINE_H - 2
+                # OpenCV 기준점(Baseline)과 PIL 기준점(Top-left) 차이 보정 (-11px)
+                d.text((ix + INFO_BOX_PAD, ty - 11), line_str, font=font, fill=(220, 220, 220))
+                
+        canvas[:] = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
