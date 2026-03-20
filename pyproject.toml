@@ -23,4 +23,9 @@ dependencies = [
     "torchvision>=0.25.0",
     "tqdm>=4.67.3",
     "ultralytics>=8.4.21",
+    "easyocr>=1.7.2",
+    "onnx>=1.12.0,<2.0.0",
+    "onnxslim>=0.1.71",
+    "onnxruntime>=1.16.0",
+    "coremltools>=8.0",
 ]

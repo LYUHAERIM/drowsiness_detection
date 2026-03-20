@@ -21,6 +21,7 @@ import argparse
 import csv
 import sys
 from collections import Counter
+# [OCR] from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -42,7 +43,7 @@ from src.detection.drowsiness import (
 )
 from src.detection.face import FaceMeshDetector
 from src.detection.pose import PoseDetector
-from src.ocr.reader import NameOCR
+# [OCR] from src.ocr.reader import NameOCR
 from src.tracking.slot import (
     SlotState,
     detect_layout_change,
@@ -106,15 +107,14 @@ class PipelineConfig:
     slot_match_dist: float = 0.40   # 슬롯-탐지 매칭 최대 정규화 거리
     row_group_thresh: int = 90      # 같은 행으로 묶는 y 거리 (px)
 
-    # OCR
-    ocr_retry_interval: int = 90    # 일반 OCR 재시도 간격 (프레임)
-    ocr_fast_interval: int = 20     # 레이아웃 변경 직후 빠른 OCR 간격
-    name_vote_maxlen: int = 12      # 이름 투표 기록 최대 길이
-    ocr_lock_min_votes: int = 3     # 이름 확정 최소 득표 수
-    ocr_name_conf_lock: float = 0.70  # 이 신뢰도 이상이면 OCR 재시도 안 함
-    layout_boost_sec: float = 3.0   # 레이아웃 변경 후 빠른 OCR 지속 시간
-    layout_change_cooldown: float = 2.0  # 레이아웃 변경 감지 최소 간격 (초)
-    teacher_names: list = field(default_factory=list)  # 강사 이름 목록
+    # [OCR] ocr_retry_interval: int = 90    # 일반 OCR 재시도 간격 (프레임)
+    # [OCR] ocr_fast_interval: int = 20     # 레이아웃 변경 직후 빠른 OCR 간격
+    # [OCR] name_vote_maxlen: int = 12      # 이름 투표 기록 최대 길이
+    # [OCR] ocr_lock_min_votes: int = 3     # 이름 확정 최소 득표 수
+    # [OCR] ocr_name_conf_lock: float = 0.70  # 이 신뢰도 이상이면 OCR 재시도 안 함
+    # [OCR] layout_boost_sec: float = 3.0   # 레이아웃 변경 후 빠른 OCR 지속 시간
+    # [OCR] layout_change_cooldown: float = 2.0  # 레이아웃 변경 감지 최소 간격 (초)
+    # [OCR] teacher_names: list = field(default_factory=list)  # 강사 이름 목록
 
     # FaceMesh
     face_min_conf: float = 0.25
@@ -169,7 +169,7 @@ class ZoomPipeline:
         self._cfg = config or PipelineConfig()
         self._face_detector: Optional[FaceMeshDetector] = None
         self._pose_detector: Optional[PoseDetector] = None
-        self._ocr: Optional[NameOCR] = None
+        # [OCR] self._ocr: Optional[NameOCR] = None
 
         self._slots: dict[int, SlotState] = {}
         self._next_slot_id = 1
@@ -177,6 +177,9 @@ class ZoomPipeline:
         self._last_layout_change_frame = -(10 ** 9)
         self._layout_boost_until = -1
         self._pose_consec: dict[int, int] = {}  # slot_id → 연속 pose_head_down 프레임 수
+
+        # [OCR] self._ocr_executor = ThreadPoolExecutor(max_workers=1)
+        # [OCR] self._ocr_futures: dict[int, Future] = {}  # slot_id → 진행 중인 OCR Future
 
     # ── 컨텍스트 매니저 ───────────────────────────────────────────────────────
 
@@ -190,10 +193,10 @@ class ZoomPipeline:
             self._pose_detector = PoseDetector(
                 min_detection_confidence=cfg.pose_conf,
             )
-        self._ocr = NameOCR(
-            teacher_names=cfg.teacher_names,
-            gpu=isinstance(cfg.device, int),
-        )
+        # [OCR] self._ocr = NameOCR(
+        # [OCR]     teacher_names=cfg.teacher_names,
+        # [OCR]     gpu=isinstance(cfg.device, int),
+        # [OCR] )
         return self
 
     def close(self):
@@ -201,6 +204,7 @@ class ZoomPipeline:
             self._face_detector.close()
         if self._pose_detector:
             self._pose_detector.close()
+        # [OCR] self._ocr_executor.shutdown(wait=False)
 
     def __enter__(self) -> "ZoomPipeline":
         return self.open()
@@ -235,6 +239,9 @@ class ZoomPipeline:
         fps_eff = fps_effective if fps_effective is not None else fps  # threshold 계산용
         frame_h, frame_w = frame.shape[:2]
 
+        # ── 완료된 OCR 결과 반영 ───────────────────────────────────────────────
+        # [OCR] self._collect_ocr_results()
+
         # ── YOLO 탐지 ─────────────────────────────────────────────────────────
         dets = self._yolo_detect(frame)
         dets = sort_detections_reading_order(dets, cfg.row_group_thresh)
@@ -245,10 +252,10 @@ class ZoomPipeline:
             cooldown = int(cfg.layout_change_cooldown * fps)
             if frame_idx - self._last_layout_change_frame >= cooldown:
                 self._last_layout_change_frame = frame_idx
-                self._layout_boost_until = frame_idx + int(cfg.layout_boost_sec * fps)
-                for s in self._slots.values():
-                    s.name_votes = s.name_votes[-1:]
-                    s.name_final = ""
+                # [OCR] self._layout_boost_until = frame_idx + int(cfg.layout_boost_sec * fps)
+                # [OCR] for s in self._slots.values():
+                # [OCR]     s.name_votes = s.name_votes[-1:]
+                # [OCR]     s.name_final = ""
         self._prev_layout_summary = curr_layout
 
         # ── 슬롯 매칭 ─────────────────────────────────────────────────────────
@@ -261,19 +268,21 @@ class ZoomPipeline:
         for di in um_dets:
             det = dets[di]
             thumb = self._crop(frame, det["box"])
-            name, name_conf = self._ocr.read_name(thumb)
             new_slot = SlotState(
                 slot_id=self._next_slot_id,
                 box=det["box"],
                 class_name=det["cls"],
                 conf=det["conf"],
                 last_seen_frame=frame_idx,
-                name_votes=[name] if name else [],
-                name_final=name,
-                name_conf=name_conf,
+                name_votes=[],
+                name_final="",
+                name_conf=0.0,
                 last_ocr_frame=frame_idx,
-                is_teacher=self._ocr.is_teacher(name),
+                is_teacher=False,
             )
+            # [OCR] self._ocr_futures[self._next_slot_id] = self._ocr_executor.submit(
+            # [OCR]     self._ocr.read_name, thumb
+            # [OCR] )
             self._slots[self._next_slot_id] = new_slot
             matches.append((self._next_slot_id, di))
             self._next_slot_id += 1
@@ -366,7 +375,7 @@ class ZoomPipeline:
             else:                         sl.frames_normal += 1
 
             # OCR (필요할 때만)
-            self._try_ocr(sl, thumb, frame_idx)
+            # [OCR] self._try_ocr(sl, thumb, frame_idx)
 
             # 시각화
             draw_slot_bbox(
@@ -464,33 +473,51 @@ class ZoomPipeline:
                 })
         return dets
 
-    def _try_ocr(self, sl: SlotState, thumb: np.ndarray, frame_idx: int) -> None:
-        """OCR 재시도 조건을 확인하고 필요하면 이름을 갱신합니다."""
-        cfg = self._cfg
-        ocr_interval = (
-            cfg.ocr_fast_interval
-            if frame_idx <= self._layout_boost_until
-            else cfg.ocr_retry_interval
-        )
-        need_ocr = (
-            (not sl.name_final or sl.name_conf < cfg.ocr_name_conf_lock)
-            and (frame_idx - sl.last_ocr_frame >= ocr_interval)
-        )
-        if not need_ocr:
-            return
+    # [OCR] def _collect_ocr_results(self) -> None:
+    # [OCR]     """완료된 OCR Future 결과를 슬롯에 반영합니다."""
+    # [OCR]     cfg = self._cfg
+    # [OCR]     done_sids = [sid for sid, f in self._ocr_futures.items() if f.done()]
+    # [OCR]     for sid in done_sids:
+    # [OCR]         future = self._ocr_futures.pop(sid)
+    # [OCR]         sl = self._slots.get(sid)
+    # [OCR]         if sl is None:
+    # [OCR]             continue
+    # [OCR]         try:
+    # [OCR]             name, _ = future.result()
+    # [OCR]         except Exception:
+    # [OCR]             continue
+    # [OCR]         if name:
+    # [OCR]             sl.name_votes.append(name)
+    # [OCR]             if len(sl.name_votes) > cfg.name_vote_maxlen:
+    # [OCR]                 sl.name_votes = sl.name_votes[-cfg.name_vote_maxlen:]
+    # [OCR]             cnt = Counter(sl.name_votes)
+    # [OCR]             best, votes = cnt.most_common(1)[0]
+    # [OCR]             if votes >= cfg.ocr_lock_min_votes or (votes >= 2 and not sl.name_final):
+    # [OCR]                 sl.name_final = best
+    # [OCR]                 sl.name_conf  = float(votes / len(sl.name_votes))
+    # [OCR]                 sl.is_teacher = self._ocr.is_teacher(sl.name_final)
 
-        name, name_conf = self._ocr.read_name(thumb)
-        if name:
-            sl.name_votes.append(name)
-            if len(sl.name_votes) > cfg.name_vote_maxlen:
-                sl.name_votes = sl.name_votes[-cfg.name_vote_maxlen:]
-            cnt = Counter(sl.name_votes)
-            best, votes = cnt.most_common(1)[0]
-            if votes >= cfg.ocr_lock_min_votes or (votes >= 2 and not sl.name_final):
-                sl.name_final  = best
-                sl.name_conf   = float(votes / len(sl.name_votes))
-                sl.is_teacher  = self._ocr.is_teacher(sl.name_final)
-        sl.last_ocr_frame = frame_idx
+    # [OCR] def _try_ocr(self, sl: SlotState, thumb: np.ndarray, frame_idx: int) -> None:
+    # [OCR]     """OCR 재시도 조건을 확인하고 필요하면 비동기로 제출합니다."""
+    # [OCR]     cfg = self._cfg
+    # [OCR]     # 이미 이 슬롯의 OCR이 진행 중이면 스킵
+    # [OCR]     if sl.slot_id in self._ocr_futures:
+    # [OCR]         return
+    # [OCR]     ocr_interval = (
+    # [OCR]         cfg.ocr_fast_interval
+    # [OCR]         if frame_idx <= self._layout_boost_until
+    # [OCR]         else cfg.ocr_retry_interval
+    # [OCR]     )
+    # [OCR]     need_ocr = (
+    # [OCR]         (not sl.name_final or sl.name_conf < cfg.ocr_name_conf_lock)
+    # [OCR]         and (frame_idx - sl.last_ocr_frame >= ocr_interval)
+    # [OCR]     )
+    # [OCR]     if not need_ocr:
+    # [OCR]         return
+    # [OCR]     self._ocr_futures[sl.slot_id] = self._ocr_executor.submit(
+    # [OCR]         self._ocr.read_name, thumb
+    # [OCR]     )
+    # [OCR]     sl.last_ocr_frame = frame_idx
 
     @staticmethod
     def _crop(img: np.ndarray, box: tuple) -> np.ndarray:
@@ -555,7 +582,7 @@ def run_inference(
     yolo_model = YOLO(checkpoint_str)
 
     config = PipelineConfig(
-        teacher_names=teacher_names or ["강경미"],
+        # [OCR] teacher_names=teacher_names or ["강경미"],
         target_fps=fps,
         use_pose_fallback=use_fallback,
         start_sec=start_sec,
