@@ -65,6 +65,12 @@ class SlotState:
     raw_hist: deque = field(default_factory=lambda: deque(maxlen=20))
     current_state: str = "NORMAL"
 
+    # ── NoFace 연속 카운터 ────────────────────────────────────────────────────
+    noface_consec: int = 0          # 연속 얼굴 미검출 프레임 수
+
+    # ── Wakeup 감지 ───────────────────────────────────────────────────────────
+    wake_motion_frames: int = 0     # 연속 큰 움직임 프레임 수 (wakeup 감지용)
+
     # ── bbox 안정화 ───────────────────────────────────────────────────────────
     box_smoothed: Optional[list] = None
     prev_gray: Optional[np.ndarray] = None
@@ -72,6 +78,7 @@ class SlotState:
     # ── 통계 ──────────────────────────────────────────────────────────────────
     total_frames: int = 0
     frames_drowsy: int = 0
+    frames_yawn: int = 0
     frames_absent: int = 0
     frames_normal: int = 0
 

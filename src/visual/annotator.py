@@ -93,6 +93,7 @@ def draw_slot_bbox(
     final_state: str,
     box_colors: dict,
     state_colors: dict,
+    no_face: bool = False,
 ) -> None:
     """
     슬롯 바운딩박스와 상태 레이블을 캔버스에 그립니다.
@@ -100,14 +101,30 @@ def draw_slot_bbox(
     Args:
         box_colors:   {"person_on": (R,G,B), ...}
         state_colors: {"NORMAL": (R,G,B), ...}
+        no_face:      얼굴 완전 미검출 여부 → NOFACE 표시
     """
     x1, y1, x2, y2 = [int(v) for v in box]
-    box_color   = box_colors.get(class_name, (180, 180, 180))
-    state_color = state_colors.get(final_state, (200, 200, 200))
 
-    cv2.rectangle(canvas, (x1, y1), (x2, y2), box_color, 2)
+    # 표시 상태 결정: NOFACE > final_state 순 우선
+    # YAWN은 final_state 자체에 포함됨 (독립 상태)
+    if no_face:
+        display_state = "NOFACE"
+    else:
+        display_state = final_state
 
-    label = f"ID{slot_id} {final_state}"
+    # bbox 테두리 색 결정
+    if display_state == "NOFACE":
+        border_color = (120, 120, 120)   # 회색
+    elif display_state in state_colors and display_state not in ("NORMAL", "IGNORE", "ABSENT"):
+        border_color = state_colors[display_state]
+    else:
+        border_color = box_colors.get(class_name, (180, 180, 180))
+
+    state_color = state_colors.get(display_state, (120, 120, 120))
+
+    cv2.rectangle(canvas, (x1, y1), (x2, y2), border_color, 2)
+
+    label = f"ID{slot_id} {display_state}"
     (lw, lh), _ = cv2.getTextSize(label, _FONT, 0.44, 1)
     lx = max(0, x1)
     ly = max(lh + 4, y1 - 2)
@@ -147,6 +164,7 @@ def draw_info_box(
     final_state: str,
     state_colors: dict,
     box_w: int = 336,
+    is_noface: bool = False,
 ) -> None:
     """
     슬롯 상세 정보 박스 (EAR, MAR, pitch, 타이머 등)를 그립니다.
@@ -160,6 +178,7 @@ def draw_info_box(
         final_state: 최종 상태 문자열
         state_colors: {"NORMAL": (R,G,B), ...}
         box_w:       박스 너비
+        is_noface:   얼굴 장기 미검출 여부 → 테두리색을 썸네일과 동일하게 맞춤
     """
     _nan = float("nan")
 
@@ -167,36 +186,40 @@ def draw_info_box(
         return "-" if (v is None or (isinstance(v, float) and math.isnan(v))) else str(round(float(v), 3))
 
     ear_th = slot.bl_ear * 0.75 if slot.bl_ear else 0.18
-    mar_th = slot.bl_mar * 1.30 if slot.bl_mar else 0.60
-    lv     = "L1" if face_result.lm_ok else ("L2" if face_result.face_ok else "L3")
-    te     = " [T]" if slot.is_teacher else ""
-    name   = slot.name_final if slot.name_final else f"slot_{slot.slot_id}"
+    mar_th = max(slot.bl_mar * 1.30, 0.60) if slot.bl_mar else 0.60
+
+    if face_result.lm_ok:
+        lv = "L1"
+    elif face_result.face_ok:
+        lv = "L2"
+    else:
+        lv = "NoFace"
+
+    te      = " [T]" if slot.is_teacher else ""
+    name    = slot.name_final if slot.name_final else f"slot_{slot.slot_id}"
+    yawn_str = " [YAWN]" if final_state == "YAWN" else ""
 
     info_lines = [
         f"{name}{te}",
         f"{final_state} {lv}",
         f"EAR={_f(face_result.ear)} th={ear_th:.3f}",
-        f"MAR={_f(face_result.mar)} th={mar_th:.3f}",
+        f"MAR={_f(face_result.mar)} th={mar_th:.3f}{yawn_str}",
         f"pit={_f(face_result.pitch_like)} cy={_f(face_result.face_center_y)}",
         f"eF={slot.ear_low_frames} fF={slot.face_low_frames}",
     ]
 
-    state_color = state_colors.get(final_state, (200, 200, 200))
+    # is_noface=True면 썸네일과 동일하게 회색 테두리 (draw_slot_bbox와 일치)
+    if is_noface:
+        state_color = (120, 120, 120)
+    else:
+        state_color = state_colors.get(final_state, (200, 200, 200))
     ix, iy = anchor
     ibox_h = INFO_BOX_H
 
     cv2.rectangle(canvas, (ix, iy), (ix + box_w, iy + ibox_h), (30, 30, 30), -1)
     cv2.rectangle(canvas, (ix, iy), (ix + box_w, iy + ibox_h), state_color, 1)
 
-    # for li, line in enumerate(info_lines):
-    #     ty = iy + INFO_BOX_PAD + (li + 1) * INFO_LINE_H - 2
-    #     cv2.putText(
-    #         canvas, str(line),
-    #         (ix + INFO_BOX_PAD, ty),
-    #         _FONT, 0.40, (220, 220, 220), 1, cv2.LINE_AA,
-    #     )
-
-# 1. 먼저 한글이 없는 줄(영문/숫자)을 OpenCV로 캔버스에 모두 그립니다.
+    # 1. 한글이 없는 줄(영문/숫자)을 OpenCV로 캔버스에 그립니다.
     for li, line in enumerate(info_lines):
         line_str = str(line)
         if not _contains_korean(line_str):
