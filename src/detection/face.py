@@ -10,6 +10,8 @@ import mediapipe as mp
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
+from .metrics import ear as _metrics_ear, mar as _metrics_mar
+
 # face_landmarker.task 모델 자동 다운로드
 _MODEL_PATH = Path(__file__).parent / "face_landmarker.task"
 _MODEL_URL = (
@@ -180,19 +182,6 @@ class FaceMeshDetector:
             up = cv2.cvtColor(cv2.merge([self._clahe.apply(l), a, b]), cv2.COLOR_LAB2BGR)
         return up, scale
 
-    # ── 랜드마크 → 지표 계산 ─────────────────────────────────────────────────
-
-    @staticmethod
-    def _pt(lm, i: int, w: int, h: int) -> np.ndarray:
-        return np.array([lm[i].x * w, lm[i].y * h], dtype=np.float32)
-
-    @classmethod
-    def _ear_single(cls, lm, idx: list[int], w: int, h: int) -> float:
-        p = [cls._pt(lm, i, w, h) for i in idx]
-        num = np.linalg.norm(p[1] - p[5]) + np.linalg.norm(p[2] - p[4])
-        den = 2.0 * np.linalg.norm(p[0] - p[3]) + 1e-6
-        return float(num / den)
-
     # ── 메인 검출 ─────────────────────────────────────────────────────────────
 
     def detect(self, thumb_bgr: np.ndarray, cls_name: str = "person_on") -> FaceMeshResult:
@@ -234,14 +223,18 @@ class FaceMeshDetector:
             lm_ok = True
             lm = result.face_landmarks[0]
 
-            le = self._ear_single(lm, _LEFT_EYE_IDX, w, h)
-            re = self._ear_single(lm, _RIGHT_EYE_IDX, w, h)
-            ear = (le + re) / 2.0
+            # 정규화 좌표 → 픽셀 좌표 배열 (float32, shape: N×2)
+            lm_px = np.array([[p.x * w, p.y * h] for p in lm], dtype=np.float32)
 
-            nose   = self._pt(lm, _NOSE_TIP_IDX, w, h)
-            chin   = self._pt(lm, _CHIN_IDX, w, h)
-            le_pt  = self._pt(lm, _L_EYE_OUT_IDX, w, h)
-            re_pt  = self._pt(lm, _R_EYE_OUT_IDX, w, h)
+            # EAR / MAR: metrics.py 공용 함수 재사용
+            ear = (_metrics_ear(lm_px, _LEFT_EYE_IDX) + _metrics_ear(lm_px, _RIGHT_EYE_IDX)) / 2.0
+            mar = _metrics_mar(lm_px)
+
+            # pitch_like / tilt_deg
+            nose    = lm_px[_NOSE_TIP_IDX]
+            chin    = lm_px[_CHIN_IDX]
+            le_pt   = lm_px[_L_EYE_OUT_IDX]
+            re_pt   = lm_px[_R_EYE_OUT_IDX]
             eye_mid = (le_pt + re_pt) / 2.0
 
             pitch_like = float((nose[1] - eye_mid[1]) / (chin[1] - eye_mid[1] + 1e-6))
@@ -249,14 +242,8 @@ class FaceMeshDetector:
             dx = re_pt[0] - le_pt[0] + 1e-6
             tilt_deg = abs(math.degrees(math.atan2(dy, dx)))
 
-            m_top = self._pt(lm, _MOUTH_TOP_IDX, w, h)
-            m_bot = self._pt(lm, _MOUTH_BOT_IDX, w, h)
-            m_lft = self._pt(lm, _MOUTH_LEFT_IDX, w, h)
-            m_rgt = self._pt(lm, _MOUTH_RIGHT_IDX, w, h)
-            mar = float(np.linalg.norm(m_top - m_bot) / (np.linalg.norm(m_lft - m_rgt) + 1e-6))
-
-            xs = np.array([p.x * w for p in lm])
-            ys = np.array([p.y * h for p in lm])
+            # face_box
+            xs, ys = lm_px[:, 0], lm_px[:, 1]
             face_box = (
                 max(0, int(xs.min() / scale)), max(0, int(ys.min() / scale)),
                 min(w0, int(xs.max() / scale)), min(h0, int(ys.max() / scale)),

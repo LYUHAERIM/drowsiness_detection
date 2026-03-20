@@ -17,6 +17,7 @@ Zoom 썸네일 영상 졸음 감지 파이프라인.
     화면 시각화       → src/visual/annotator.py
     영상 입출력       → src/utils/video_conversion.py
 """
+import argparse
 import csv
 import sys
 from collections import Counter
@@ -30,9 +31,11 @@ import cv2
 import numpy as np
 import torch
 from ultralytics import YOLO
+from tqdm import tqdm
 
 from src.detection.drowsiness import (
     DrowsinessConfig,
+    _reset_timers,
     compute_motion,
     update_baselines,
     update_drowsiness_state,
@@ -68,7 +71,8 @@ BOX_COLORS = {
 }
 STATE_COLORS = {
     "NORMAL": (70, 220, 70),
-    "DROWSY": (0, 80, 255),
+    "DROWSY": (0, 0, 255),      # 빨간색 (BGR)
+    "YAWN":   (0, 128, 255),    # 주황색 (BGR)
     "ABSENT": (0, 165, 255),
     "IGNORE": (160, 160, 160),
 }
@@ -92,10 +96,10 @@ class PipelineConfig:
     target_fps: float = 10.0
 
     # YOLO
-    yolo_imgsz: int = 960
+    yolo_imgsz: int = 960 # 640 Test > 960 > 1280
     yolo_conf: float = 0.10
     yolo_iou: float = 0.45
-    yolo_max_det: int = 20
+    yolo_max_det: int = 5 # 20 -> 5 수정
 
     # 슬롯 트래킹
     slot_max_misses: int = 40       # 슬롯 삭제까지 허용 miss 프레임 수
@@ -107,6 +111,7 @@ class PipelineConfig:
     ocr_fast_interval: int = 20     # 레이아웃 변경 직후 빠른 OCR 간격
     name_vote_maxlen: int = 12      # 이름 투표 기록 최대 길이
     ocr_lock_min_votes: int = 3     # 이름 확정 최소 득표 수
+    ocr_name_conf_lock: float = 0.70  # 이 신뢰도 이상이면 OCR 재시도 안 함
     layout_boost_sec: float = 3.0   # 레이아웃 변경 후 빠른 OCR 지속 시간
     layout_change_cooldown: float = 2.0  # 레이아웃 변경 감지 최소 간격 (초)
     teacher_names: list = field(default_factory=list)  # 강사 이름 목록
@@ -114,6 +119,9 @@ class PipelineConfig:
     # FaceMesh
     face_min_conf: float = 0.25
     use_clahe: bool = True
+
+    # No Face: 연속 N프레임 이상 미검출 시 NOFACE 확정 (순간 가림 필터링)
+    noface_hold_frames: int = 15    # ≈1.5초 @ 10fps
 
     # Pose fallback (FaceMesh lm_ok=False일 때 PoseDetector로 고개 숙임 감지)
     use_pose_fallback: bool = False
@@ -207,14 +215,16 @@ class ZoomPipeline:
         frame: np.ndarray,
         frame_idx: int,
         fps: float,
+        fps_effective: Optional[float] = None,
     ) -> tuple[np.ndarray, list[dict]]:
         """
         프레임 한 장을 처리합니다.
 
         Args:
-            frame:     BGR 이미지
-            frame_idx: 원본 영상 기준 프레임 번호
-            fps:       원본 영상 FPS
+            frame:         BGR 이미지
+            frame_idx:     원본 영상 기준 프레임 번호
+            fps:           원본 영상 FPS (타임스탬프 계산용)
+            fps_effective: 실제 처리 FPS (threshold 계산용; None이면 fps와 동일)
 
         Returns:
             canvas:  어노테이션된 BGR 이미지 (frame_w + info_box_w 너비)
@@ -222,6 +232,7 @@ class ZoomPipeline:
         """
         cfg = self._cfg
         ts = frame_idx / max(fps, 1e-6)
+        fps_eff = fps_effective if fps_effective is not None else fps  # threshold 계산용
         frame_h, frame_w = frame.shape[:2]
 
         # ── YOLO 탐지 ─────────────────────────────────────────────────────────
@@ -296,6 +307,12 @@ class ZoomPipeline:
             sl.class_name = det["cls"]
             sl.conf = det["conf"]
             sl.last_seen_frame = frame_idx
+
+            # 장기 miss 후 복귀 시 상태 리셋 (stale PERCLOS/raw_hist에 의한 false DROWSY 방지)
+            if sl.misses >= cfg.noface_hold_frames:
+                _reset_timers(sl, clear_perclos=True)
+                sl.raw_hist.clear()
+                sl.current_state = "NORMAL"
             sl.misses = 0
 
             x1, y1, x2, y2 = det["box"]
@@ -303,6 +320,20 @@ class ZoomPipeline:
 
             # 얼굴 특징 추출
             face_result = self._face_detector.detect(thumb, det["cls"])
+
+            # NoFace 연속 카운터 업데이트
+            prev_noface_long = sl.noface_consec >= cfg.noface_hold_frames
+            if not face_result.lm_ok and not face_result.face_ok:
+                sl.noface_consec += 1
+            else:
+                sl.noface_consec = 0
+            is_noface = sl.noface_consec >= cfg.noface_hold_frames
+
+            # 장기 No Face → 얼굴 복귀 시 상태 리셋 (stale PERCLOS에 의한 false DROWSY 방지)
+            if prev_noface_long and not is_noface:
+                _reset_timers(sl, clear_perclos=True)
+                sl.raw_hist.clear()
+                sl.current_state = "NORMAL"
 
             # Pose fallback: FaceMesh 랜드마크 검출 실패 시 고개 숙임 보조 감지
             if self._pose_detector is not None and not face_result.lm_ok:
@@ -324,12 +355,13 @@ class ZoomPipeline:
 
             # 졸음 상태 업데이트
             raw_state, final_state, drowsy_reason = update_drowsiness_state(
-                sl, face_result, motion, det["cls"], fps, ts, cfg.drowsiness
+                sl, face_result, motion, det["cls"], fps_eff, ts, cfg.drowsiness
             )
             update_baselines(sl, face_result, final_state, ts, cfg.drowsiness)
 
             sl.total_frames += 1
             if final_state == "DROWSY":   sl.frames_drowsy += 1
+            elif final_state == "YAWN":   sl.frames_yawn   += 1
             elif final_state == "ABSENT": sl.frames_absent += 1
             else:                         sl.frames_normal += 1
 
@@ -337,7 +369,10 @@ class ZoomPipeline:
             self._try_ocr(sl, thumb, frame_idx)
 
             # 시각화
-            draw_slot_bbox(canvas, sid, det["box"], det["cls"], final_state, BOX_COLORS, STATE_COLORS)
+            draw_slot_bbox(
+                canvas, sid, det["box"], det["cls"], final_state, BOX_COLORS, STATE_COLORS,
+                no_face=is_noface,
+            )
             draw_face_box(canvas, (x1, y1), face_result.face_box)
 
             ibox_h = INFO_BOX_H
@@ -351,6 +386,7 @@ class ZoomPipeline:
                 canvas, sl, face_result, (ix, iy),
                 final_state, STATE_COLORS,
                 box_w=cfg.info_box_w - 4,
+                is_noface=is_noface,
             )
 
             records.append({
@@ -393,6 +429,7 @@ class ZoomPipeline:
                 "total_frames":  sl.total_frames,
                 "frames_normal": sl.frames_normal,
                 "frames_drowsy": sl.frames_drowsy,
+                "frames_yawn":   sl.frames_yawn,
                 "frames_absent": sl.frames_absent,
                 "bl_ear":        sl.bl_ear,
                 "bl_pitch":      sl.bl_pitch,
@@ -436,7 +473,7 @@ class ZoomPipeline:
             else cfg.ocr_retry_interval
         )
         need_ocr = (
-            (not sl.name_final or sl.name_conf < 0.70)
+            (not sl.name_final or sl.name_conf < cfg.ocr_name_conf_lock)
             and (frame_idx - sl.last_ocr_frame >= ocr_interval)
         )
         if not need_ocr:
@@ -465,71 +502,131 @@ class ZoomPipeline:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 엔트리포인트
+# 통합 실행 함수 (Jupyter/Script 호출용)
 # ─────────────────────────────────────────────────────────────────────────────
 
-if __name__ == "__main__":
+def run_inference(
+    input_path: str | Path = "data/video/TestVideo2.mp4",
+    checkpoint: str | Path = "checkpoint/yolo11n/weights/best.pt",
+    output_path: str | Path = "outputs/result.mp4",
+    fps: float = 10.0,
+    use_fallback: bool = True,
+    teacher_names: Optional[list[str]] = None,
+    start_sec: float = 0.0,
+    end_sec: Optional[float] = None,
+):
+    """
+    졸음 감지 파이프라인을 실행합니다.
+    
+    Args:
+        input_path:    입력 영상 경로
+        checkpoint:    YOLO 모델(.pt) 경로
+        output_path:   결과 영상 저장 경로
+        fps:           분석 목표 FPS
+        use_fallback:  얼굴 인식 실패 시 Pose(고개 숙임) 감지 활성화 여부
+        teacher_names: 강사 이름 리스트
+        start_sec:     분석 시작 지점(초)
+        end_sec:       분석 종료 지점(초)
+    """
     load_env()
+    
+    # 경로 처리 (OpenCV는 문자열 경로를 선호합니다)
+    checkpoint_str = str(checkpoint)
+    input_str = str(input_path)
+    output_str = str(output_path)
+    
+    output_path = Path(output_path)
+    if output_path.is_dir():
+        # 만약 폴더 경로가 들어왔다면 기본 파일명을 붙여줍니다.
+        output_path = output_path / "result.mp4"
+        output_str = str(output_path)
+    
+    output_dir = output_path.parent
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    frame_csv = output_dir / f"{output_path.stem}_frames.csv"
+    track_csv = output_dir / f"{output_path.stem}_summary.csv"
 
-    CHECKPOINT   = Path("/content/drive/MyDrive/drowsiness/drowsiness_detection/model/yolov11n_best.pt")
-    VIDEO_PATH   = Path("/content/drive/MyDrive/drowsiness/drowsiness_detection/video/TestVideo_acting.mp4")
-    OUTPUT_VIDEO = Path("/content/drive/MyDrive/drowsiness/output/output.mp4")
-    OUTPUT_FRAME_CSV = Path("/content/drive/MyDrive/drowsiness/output/frame_features.csv")
-    OUTPUT_TRACK_CSV = Path("/content/drive/MyDrive/drowsiness/output/track_summary.csv")
+    if not Path(checkpoint).exists():
+        print(f"[경고] YOLO 체크포인트 없음: {checkpoint}")
+    
+    assert Path(input_path).exists(), f"입력 영상 없음: {input_path}"
 
-    assert CHECKPOINT.exists(), f"YOLO 체크포인트 없음: {CHECKPOINT}"
-    assert VIDEO_PATH.exists(), f"입력 영상 없음: {VIDEO_PATH}"
-
-    yolo_model = YOLO(str(CHECKPOINT))
+    yolo_model = YOLO(checkpoint_str)
 
     config = PipelineConfig(
-        teacher_names=["강경미"],
-        start_sec=0,
-        end_sec=120,
-        target_fps=10.0, # 이거 수정해서 fps 변경
+        teacher_names=teacher_names or ["강경미"],
+        target_fps=fps,
+        use_pose_fallback=use_fallback,
+        start_sec=start_sec,
+        end_sec=end_sec,
         drowsiness=DrowsinessConfig(
             ear_hold_strong_sec=0.5,
-            ear_hold_weak_sec=1.5,
         ),
     )
 
-    all_records: list[dict] = []
+    all_records = []
+    track_summary = []
 
-    with VideoReader(VIDEO_PATH, start_sec=config.start_sec,
+    with VideoReader(input_str, start_sec=config.start_sec,
                      end_sec=config.end_sec, target_fps=config.target_fps) as reader:
 
         canvas_w = reader.width + config.info_box_w
 
-        with VideoWriter(OUTPUT_VIDEO, reader.fps_effective,
+        with VideoWriter(output_str, reader.fps_effective,
                          canvas_w, reader.height) as writer:
 
             with ZoomPipeline(yolo_model, config) as pipeline:
                 total = len(reader)
-                for i, (frame_idx, ts, frame) in enumerate(reader, 1):
-                    canvas, records = pipeline.process_frame(frame, frame_idx, reader.fps)
+                pbar = tqdm(reader, total=total, desc=f"분석 중 ({Path(input_path).name})", unit="frame")
+                
+                for frame_idx, ts, frame in pbar:
+                    canvas, records = pipeline.process_frame(frame, frame_idx, reader.fps, reader.fps_effective)
                     writer.write(canvas)
                     all_records.extend(records)
-
-                    if i % 10 == 0:
-                        print(f"[{i}/{total}] t={ts:.1f}s")
+                    pbar.set_postfix({"ts": f"{ts:.1f}s", "dets": len(records)})
 
             track_summary = pipeline.get_track_summary()
 
-    # ── CSV 저장 ──────────────────────────────────────────────────────────────
-    OUTPUT_FRAME_CSV.parent.mkdir(parents=True, exist_ok=True)
-
+    # CSV 저장
     if all_records:
-        with open(OUTPUT_FRAME_CSV, "w", newline="", encoding="utf-8-sig") as f:
+        with open(frame_csv, "w", newline="", encoding="utf-8-sig") as f:
             writer_csv = csv.DictWriter(f, fieldnames=list(all_records[0].keys()))
             writer_csv.writeheader()
             writer_csv.writerows(all_records)
-        print(f"프레임 CSV 저장: {OUTPUT_FRAME_CSV}")
+        print(f"프레임 결과 저장: {frame_csv}")
 
     if track_summary:
-        with open(OUTPUT_TRACK_CSV, "w", newline="", encoding="utf-8-sig") as f:
+        with open(track_csv, "w", newline="", encoding="utf-8-sig") as f:
             writer_csv = csv.DictWriter(f, fieldnames=list(track_summary[0].keys()))
             writer_csv.writeheader()
             writer_csv.writerows(track_summary)
-        print(f"트랙 CSV 저장: {OUTPUT_TRACK_CSV}")
+        print(f"수강생 요약 저장: {track_csv}")
 
-    print(f"영상 저장 완료: {OUTPUT_VIDEO}")
+    print(f"영상 저장 완료: {output_path}")
+    return track_summary
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 엔트리포인트 (CLI 실행)
+# ─────────────────────────────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="졸음 감지 파이프라인 실행")
+    parser.add_argument("--checkpoint", type=str, default="checkpoint/yolo11n/best.pt", help="YOLO 모델 경로")
+    parser.add_argument("--input", type=str, required=True, help="입력 영상 경로")
+    parser.add_argument("--output", type=str, default="outputs/result.mp4", help="결과 영상 저장 경로")
+    parser.add_argument("--fps", type=float, default=10.0, help="분석 목표 FPS")
+    parser.add_argument("--use_fallback", action="store_true", help="Pose fallback 활성화 여부")
+    parser.add_argument("--teacher", type=str, default="강경미", help="강사 이름 (쉼표로 구분)")
+
+    args = parser.parse_args()
+
+    run_inference(
+        input_path=args.input,
+        checkpoint=args.checkpoint,
+        output_path=args.output,
+        fps=args.fps,
+        use_fallback=args.use_fallback,
+        teacher_names=args.teacher.split(","),
+    )
