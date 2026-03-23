@@ -21,14 +21,36 @@ def build_css() -> str:
         --blue: #60a5fa;
     }}
 
+    html, body {{
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+    }}
+
+    body {{
+        background: linear-gradient(180deg, #09090b 0%, #111827 100%);
+    }}
+
     .gradio-container {{
         background: linear-gradient(180deg, #09090b 0%, #111827 100%);
         color: var(--text);
+        margin: 0 !important;
+        padding: 0 !important;
+        min-height: 100vh;
+        overflow-x: hidden;
+    }}
+
+    .gradio-container .main,
+    .gradio-container .wrap,
+    .gradio-container .contain {{
+        margin: 0 !important;
+        padding: 0 !important;
     }}
 
     #app-root {{
-        min-height: 100vh;
-        padding: 20px;
+        width: 100%;
+        max-width: 100%;
+        padding: 16px 20px 12px 20px;
         box-sizing: border-box;
     }}
 
@@ -36,7 +58,7 @@ def build_css() -> str:
         display: flex;
         align-items: center;
         gap: 14px;
-        padding: 0 4px 20px 4px;
+        padding: 0 4px 16px 4px;
     }}
 
     .brand-mark {{
@@ -58,6 +80,7 @@ def build_css() -> str:
         color: white;
         font-size: 24px;
         font-weight: 700;
+        line-height: 1.2;
     }}
 
     .brand-copy p {{
@@ -70,7 +93,8 @@ def build_css() -> str:
         display: grid;
         grid-template-columns: minmax(0, 1.7fr) minmax(360px, 0.8fr);
         gap: 20px;
-        align-items: stretch;
+        align-items: start;
+        margin: 0 !important;
     }}
 
     #stage-shell {{
@@ -111,6 +135,7 @@ def build_css() -> str:
         color: #bfdbfe;
         font-size: 12px;
         font-weight: 700;
+        white-space: nowrap;
     }}
 
     #demo-stage {{
@@ -143,7 +168,8 @@ def build_css() -> str:
         background-size: cover;
     }}
 
-    #student-cam, #cam-placeholder {{
+    #student-cam,
+    #cam-placeholder {{
         position: absolute;
         left: {SLOT_X / BG_W * 100:.6f}%;
         top: {SLOT_Y / BG_H * 100:.6f}%;
@@ -179,6 +205,17 @@ def build_css() -> str:
         margin-top: 10px;
         color: var(--muted);
         font-size: 13px;
+    }}
+
+    #control-row {{
+        margin-top: 12px !important;
+        margin-bottom: 8px !important;
+        gap: 10px;
+    }}
+
+    #debug-accordion {{
+        margin-top: 8px !important;
+        margin-bottom: 0 !important;
     }}
 
     #right-panel {{
@@ -224,6 +261,7 @@ def build_css() -> str:
         font-size: 12px;
         font-weight: 700;
         border: 1px solid transparent;
+        white-space: nowrap;
     }}
 
     .cam-on {{
@@ -238,38 +276,35 @@ def build_css() -> str:
         border-color: rgba(239, 68, 68, 0.24);
     }}
 
-    .hero-card, .info-card {{
-        background: var(--card);
+    .hero-card {{
+        border-radius: 20px;
+        padding: 18px;
         border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 16px;
     }}
 
     .hero-card-row {{
         display: flex;
+        align-items: center;
         justify-content: space-between;
-        align-items: flex-start;
         gap: 12px;
     }}
 
-    .hero-label, .card-label {{
+    .hero-label {{
         color: var(--muted);
         font-size: 12px;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+        font-weight: 600;
+        margin-bottom: 8px;
     }}
 
     .hero-value {{
-        margin-top: 10px;
-        font-size: 34px;
-        font-weight: 800;
         color: white;
-        line-height: 1;
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1.1;
     }}
 
     .hero-desc {{
-        margin-top: 8px;
+        margin-top: 6px;
         color: #d4d4d8;
         font-size: 14px;
     }}
@@ -278,100 +313,110 @@ def build_css() -> str:
         width: 14px;
         height: 14px;
         border-radius: 999px;
-        background: currentColor;
-        box-shadow: 0 0 0 6px rgba(255, 255, 255, 0.05);
-        animation: pulse 1.6s infinite;
-        margin-top: 4px;
+        flex-shrink: 0;
     }}
 
-    .status-normal {{ color: #86efac; }}
-    .status-drowsy {{ color: #fcd34d; }}
-    .status-absent {{ color: #fca5a5; }}
-    .status-unknown {{ color: #d4d4d8; }}
+    .status-normal {{
+        background: rgba(34, 197, 94, 0.10);
+        border-color: rgba(34, 197, 94, 0.20);
+    }}
+
+    .status-normal .hero-dot {{
+        background: #22c55e;
+    }}
+
+    .status-drowsy {{
+        background: rgba(245, 158, 11, 0.10);
+        border-color: rgba(245, 158, 11, 0.20);
+    }}
+
+    .status-drowsy .hero-dot {{
+        background: #f59e0b;
+    }}
+
+    .status-absent {{
+        background: rgba(239, 68, 68, 0.10);
+        border-color: rgba(239, 68, 68, 0.20);
+    }}
+
+    .status-absent .hero-dot {{
+        background: #ef4444;
+    }}
+
+    .status-unknown {{
+        background: rgba(113, 113, 122, 0.10);
+        border-color: rgba(113, 113, 122, 0.20);
+    }}
+
+    .status-unknown .hero-dot {{
+        background: #a1a1aa;
+    }}
 
     .info-grid {{
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: 1fr 1fr;
         gap: 12px;
     }}
 
-    .compact-card .card-value {{
-        margin-top: 8px;
-        font-size: 18px;
-        font-weight: 700;
-        color: white;
+    .info-card {{
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 16px;
+    }}
+
+    .compact-card {{
+        min-height: 84px;
+    }}
+
+    .card-label {{
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        margin-bottom: 10px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
     }}
 
     .card-value {{
-        margin-top: 8px;
         color: white;
-        font-size: 15px;
-        line-height: 1.6;
+        font-size: 16px;
+        line-height: 1.5;
+        word-break: keep-all;
     }}
 
     .report-card {{
         flex: 1;
-        min-height: 220px;
     }}
 
     .report-text {{
-        margin: 8px 0 0 0;
-        color: #f4f4f5;
+        margin: 0;
+        color: #e5e7eb;
         font-size: 14px;
-        line-height: 1.7;
+        line-height: 1.6;
         white-space: pre-wrap;
         font-family: inherit;
     }}
 
-    #control-row {{
-        margin-top: 14px;
-        gap: 10px;
-    }}
-
     button.primary-btn {{
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        background: linear-gradient(135deg, #2563eb 0%, #3b82f6 100%) !important;
         color: white !important;
         border: none !important;
-        min-height: 44px;
     }}
 
     button.secondary-btn {{
         background: rgba(255, 255, 255, 0.06) !important;
         color: white !important;
         border: 1px solid rgba(255, 255, 255, 0.12) !important;
-        min-height: 44px;
     }}
 
-    #debug-accordion {{
-        margin-top: 14px;
-        border: 1px solid var(--line) !important;
-        border-radius: 18px !important;
-        overflow: hidden;
-        background: rgba(24, 24, 27, 0.75) !important;
-    }}
-
-    #debug-accordion .label-wrap span,
-    #debug-accordion .label-wrap p,
-    #debug-accordion label {{
-        color: #e4e4e7 !important;
-    }}
-
-    #debug-accordion textarea,
-    #debug-accordion input {{
-        background: rgba(39, 39, 42, 0.9) !important;
-        color: white !important;
-        border: 1px solid var(--line-strong) !important;
-    }}
-
-    @keyframes pulse {{
-        0% {{ opacity: 0.55; transform: scale(0.95); }}
-        50% {{ opacity: 1; transform: scale(1); }}
-        100% {{ opacity: 0.55; transform: scale(0.95); }}
-    }}
-
-    @media (max-width: 1180px) {{
+    @media (max-width: 1100px) {{
         #content-wrap {{
             grid-template-columns: 1fr;
+        }}
+
+        #app-root {{
+            padding: 14px;
         }}
     }}
     """
