@@ -15,8 +15,23 @@ def build_header_html() -> str:
     """
 
 
-def build_stage_html() -> str:
-    return """
+def build_stage_media_html(stage_media_url: str, stage_media_kind: str) -> str:
+    if stage_media_kind == "video":
+        return f"""
+        <video id="stage-bg-video" autoplay muted loop playsinline preload="metadata">
+            <source src="{stage_media_url}" type="video/mp4">
+        </video>
+        """
+
+    return f"""
+    <div id="stage-bg-image" style="background-image: url('{stage_media_url}');"></div>
+    """
+
+
+def build_stage_html(stage_media_url: str, stage_media_kind: str) -> str:
+    stage_media_html = build_stage_media_html(stage_media_url, stage_media_kind)
+
+    return f"""
     <div id="stage-shell">
         <div id="stage-topbar">
             <div>
@@ -27,6 +42,7 @@ def build_stage_html() -> str:
         </div>
 
         <div id="demo-stage">
+            {stage_media_html}
             <div id="cam-placeholder">Start 버튼을 눌러 카메라를 켜세요.</div>
             <video id="student-cam" autoplay muted playsinline></video>
         </div>
@@ -38,7 +54,9 @@ def build_stage_html() -> str:
     """
 
 
-def build_status_panel_html(camera_state: str, status: str, alert: str, report: str, is_running: bool) -> str:
+def build_status_panel_html(
+    camera_state: str, status: str, alert: str, report: str, is_running: bool
+) -> str:
     camera_class = "cam-on" if camera_state == "ON" else "cam-off"
 
     status_class_map = {

@@ -2,7 +2,10 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 ASSETS_DIR = BASE_DIR / "assets"
-BG_PATH = ASSETS_DIR / "demo_bg.png"
+
+# 발표용 배경 미디어
+# 기본값은 mp4 영상으로 두고, 필요하면 png/jpg로 바꿔도 동작하도록 구성
+STAGE_MEDIA_PATH = ASSETS_DIR / "demo_bg.mp4"
 
 # 발표용 배경 원본 해상도
 BG_W = 1920

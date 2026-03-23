@@ -3,7 +3,7 @@ from __future__ import annotations
 from app.config import BG_H, BG_W, SLOT_H, SLOT_W, SLOT_X, SLOT_Y
 
 
-def build_css(bg_data_url: str) -> str:
+def build_css() -> str:
     return f"""
     :root {{
         --bg-0: #09090b;
@@ -45,7 +45,7 @@ def build_css(bg_data_url: str) -> str:
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 14px;
+        border-radius: 0;
         background: linear-gradient(135deg, #10b981 0%, #059669 100%);
         color: white;
         font-size: 20px;
@@ -117,13 +117,30 @@ def build_css(bg_data_url: str) -> str:
         position: relative;
         width: 100%;
         aspect-ratio: {BG_W} / {BG_H};
-        background-image: url('{bg_data_url}');
-        background-position: center;
-        background-repeat: no-repeat;
-        background-size: cover;
         border-radius: 20px;
         overflow: hidden;
         border: 1px solid var(--line);
+        background: #09090b;
+    }}
+
+    #stage-bg-video,
+    #stage-bg-image {{
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+    }}
+
+    #stage-bg-video {{
+        object-fit: cover;
+        background: #09090b;
+    }}
+
+    #stage-bg-image {{
+        background-position: center;
+        background-repeat: no-repeat;
+        background-size: cover;
     }}
 
     #student-cam, #cam-placeholder {{
@@ -132,9 +149,9 @@ def build_css(bg_data_url: str) -> str:
         top: {SLOT_Y / BG_H * 100:.6f}%;
         width: {SLOT_W / BG_W * 100:.6f}%;
         height: {SLOT_H / BG_H * 100:.6f}%;
-        border-radius: 14px;
+        border-radius: 0;
         box-sizing: border-box;
-        z-index: 2;
+        z-index: 3;
     }}
 
     #student-cam {{
@@ -143,6 +160,7 @@ def build_css(bg_data_url: str) -> str:
         background: #0a0a0a;
         border: 3px solid rgba(34, 197, 94, 0.85);
         box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
+        z-index: 4;
     }}
 
     #cam-placeholder {{
