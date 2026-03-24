@@ -12,7 +12,7 @@ BG_W = 1920
 BG_H = 1080
 
 # 피그마 기준 3번째 학생 슬롯 위치
-SLOT_X = 1720
+SLOT_X = 1724
 SLOT_Y = 450
 SLOT_W = 180
 SLOT_H = 180
