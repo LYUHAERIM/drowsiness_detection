@@ -6,7 +6,7 @@ from pathlib import Path
 import gradio as gr
 
 from app.config import STAGE_MEDIA_PATH
-from app.demo_logic import on_start, on_stop, update_demo
+from app.demo_logic import on_start, on_stop, process_live_frame
 from app.ui.assets import load_file_as_data_url
 from app.ui.scripts import build_head_script
 from app.ui.styles import build_css
@@ -47,7 +47,7 @@ def create_demo() -> gr.Blocks:
         is_running=False,
     )
 
-    with gr.Blocks(css=css, head=head) as demo:
+    with gr.Blocks() as demo:
         gr.HTML('<div id="app-root">')
         gr.HTML(build_header_html())
 
@@ -65,50 +65,87 @@ def create_demo() -> gr.Blocks:
                     elem_id="debug-accordion",
                 ):
                     status_box = gr.Textbox(label="Status", value="NORMAL")
-                    alert_box = gr.Textbox(label="Alert", value="이상 없음")
-                    report_box = gr.Textbox(label="Final Report", lines=8, value="")
+                    alert_box = gr.Textbox(label="Alert", value="카메라가 꺼져 있습니다.")
+                    report_box = gr.Textbox(
+                        label="Final Report",
+                        lines=8,
+                        value="Start 버튼을 눌러 데모를 시작하세요.",
+                    )
+                    debug_box = gr.Textbox(
+                        label="Debug",
+                        lines=4,
+                        value="running=False frame_received=False",
+                    )
 
             with gr.Column(scale=3, elem_id="right-panel"):
                 panel_html = gr.HTML(initial_panel_html)
 
         is_running_state = gr.State(False)
-        counter_state = gr.State(0)
-        timer = gr.Timer(1.0, active=False)
+        frame_seq_box = gr.Number(
+            value=0,
+            precision=0,
+            label="frame-seq",
+            elem_id="frame-seq-input",
+            elem_classes=["bridge-hidden"],
+        )
+        frame_data_box = gr.Textbox(
+            value="",
+            label="frame-data",
+            elem_id="frame-data-input",
+            elem_classes=["bridge-hidden"],
+        )
+        frame_ack_box = gr.Number(
+            value=0,
+            precision=0,
+            label="frame-ack",
+            elem_id="frame-ack-output",
+            elem_classes=["bridge-hidden"],
+        )
+        frame_submit_btn = gr.Button(
+            "submit-frame",
+            elem_id="frame-submit-btn",
+            elem_classes=["bridge-hidden"],
+        )
 
-        timer.tick(
-            fn=update_demo,
-            inputs=[counter_state, is_running_state],
-            outputs=[counter_state, status_box, alert_box, report_box, panel_html],
+        frame_submit_btn.click(
+            fn=process_live_frame,
+            inputs=[frame_seq_box, frame_data_box, is_running_state],
+            outputs=[status_box, alert_box, report_box, panel_html, debug_box, frame_ack_box],
+            queue=False,
+            show_progress="hidden",
         )
 
         start_btn.click(
             fn=on_start,
-            inputs=[counter_state],
             outputs=[
                 is_running_state,
                 status_box,
                 alert_box,
                 report_box,
                 panel_html,
-                timer,
+                debug_box,
+                frame_ack_box,
             ],
             js="() => { startOverlayCamera(); }",
         )
 
         stop_btn.click(
             fn=on_stop,
-            inputs=[counter_state],
+            inputs=[frame_ack_box],
             outputs=[
                 is_running_state,
                 status_box,
                 alert_box,
                 report_box,
                 panel_html,
-                timer,
+                debug_box,
+                frame_ack_box,
             ],
             js="() => { stopOverlayCamera(); }",
         )
 
         gr.HTML("</div>")
 
+    demo.demo_css = css
+    demo.demo_head = head
     return demo

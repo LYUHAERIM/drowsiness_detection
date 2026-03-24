@@ -218,6 +218,10 @@ def build_css() -> str:
         margin-bottom: 0 !important;
     }}
 
+    .bridge-hidden {{
+        display: none !important;
+    }}
+
     #right-panel {{
         min-width: 0;
     }}

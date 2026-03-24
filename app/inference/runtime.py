@@ -1,5 +1,120 @@
 from __future__ import annotations
 
+import logging
+import threading
+from dataclasses import dataclass
+
 from app.inference.live_engine import LiveDrowsinessEngine
 
 ENGINE = LiveDrowsinessEngine(fps=5.0)
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s: %(message)s")
+LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class RuntimeSnapshot:
+    status: str
+    alert: str
+    report: str
+    debug_text: str
+    reason: str
+    frame_received: bool
+    frame_index: int
+    running: bool
+
+class LiveInferenceRuntime:
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._running = False
+        self._last_snapshot = RuntimeSnapshot(
+            status="NORMAL",
+            alert="카메라가 꺼져 있습니다.",
+            report="Start 버튼을 눌러 데모를 시작하세요.",
+            debug_text="running=False frame_received=False",
+            reason="idle",
+            frame_received=False,
+            frame_index=0,
+            running=False,
+        )
+
+    def start(self) -> RuntimeSnapshot:
+        with self._lock:
+            LOGGER.info("Live inference started")
+            ENGINE.reset()
+            self._running = True
+            self._last_snapshot = RuntimeSnapshot(
+                status="NORMAL",
+                alert="실시간 분석을 시작했습니다.",
+                report="카메라가 시작되었습니다.\n첫 프레임을 기다리는 중입니다.",
+                debug_text="running=True frame_received=False reason=waiting_first_frame",
+                reason="waiting_first_frame",
+                frame_received=False,
+                frame_index=0,
+                running=True,
+            )
+            return self._last_snapshot
+
+    def stop(self) -> RuntimeSnapshot:
+        with self._lock:
+            LOGGER.info("Live inference stopped after %s frames", ENGINE.frame_count)
+            self._running = False
+            self._last_snapshot = RuntimeSnapshot(
+                status=self._last_snapshot.status,
+                alert="카메라가 중지되었습니다.",
+                report=self._last_snapshot.report,
+                debug_text=(
+                    f"running=False frame_received={self._last_snapshot.frame_received} "
+                    f"last_reason={self._last_snapshot.reason} frame_index={self._last_snapshot.frame_index}"
+                ),
+                reason=self._last_snapshot.reason,
+                frame_received=self._last_snapshot.frame_received,
+                frame_index=self._last_snapshot.frame_index,
+                running=False,
+            )
+            return self._last_snapshot
+
+    def snapshot(self) -> RuntimeSnapshot:
+        with self._lock:
+            return self._last_snapshot
+
+    def process_frame(self, data_url: str) -> RuntimeSnapshot:
+        with self._lock:
+            if not self._running:
+                return self._last_snapshot
+
+            try:
+                result = ENGINE.analyze_data_url(data_url)
+                debug_text = (
+                    f"frame_received={result.frame_received} "
+                    f"frame_index={result.frame_index} "
+                    f"reason={result.reason} "
+                    f"{result.debug_text}"
+                )
+                self._last_snapshot = RuntimeSnapshot(
+                    status=result.status,
+                    alert=result.alert,
+                    report=result.report,
+                    debug_text=debug_text,
+                    reason=result.reason,
+                    frame_received=result.frame_received,
+                    frame_index=result.frame_index,
+                    running=True,
+                )
+                return self._last_snapshot
+            except Exception:
+                LOGGER.exception("Live inference failed")
+                self._last_snapshot = RuntimeSnapshot(
+                    status="NORMAL",
+                    alert="추론 중 오류가 발생했습니다.",
+                    report=self._last_snapshot.report,
+                    debug_text="runtime_error=check_python_logs",
+                    reason="runtime_error",
+                    frame_received=bool(data_url),
+                    frame_index=ENGINE.frame_count,
+                    running=True,
+                )
+                return self._last_snapshot
+
+
+RUNTIME = LiveInferenceRuntime()

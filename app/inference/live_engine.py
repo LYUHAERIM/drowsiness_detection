@@ -24,6 +24,9 @@ class LiveInferenceResult:
     alert: str
     report: str
     debug_text: str
+    reason: str
+    frame_received: bool
+    frame_index: int
 
 
 def decode_data_url_to_bgr(data_url: str) -> Optional[np.ndarray]:
@@ -76,14 +79,20 @@ class LiveDrowsinessEngine:
     def close(self):
         self.face_detector.close()
 
-    def analyze(self, data_url: str) -> LiveInferenceResult:
+    def analyze_data_url(self, data_url: str) -> LiveInferenceResult:
         frame = decode_data_url_to_bgr(data_url)
+        return self.analyze_bgr(frame)
+
+    def analyze_bgr(self, frame: Optional[np.ndarray]) -> LiveInferenceResult:
         if frame is None:
             return LiveInferenceResult(
                 status="NORMAL",
                 alert="프레임을 아직 받지 못했습니다.",
                 report="실시간 카메라 프레임 대기 중",
                 debug_text="frame=None",
+                reason="frame_missing",
+                frame_received=False,
+                frame_index=self.frame_count,
             )
 
         self.frame_count += 1
@@ -169,6 +178,9 @@ class LiveDrowsinessEngine:
             alert=alert,
             report=report,
             debug_text=debug_text,
+            reason=self.last_reason,
+            frame_received=True,
+            frame_index=self.frame_count,
         )
 
     def _update_stats(self, final_state: str):
