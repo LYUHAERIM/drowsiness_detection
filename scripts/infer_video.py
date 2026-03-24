@@ -22,6 +22,7 @@ import csv
 import sys
 from collections import Counter
 # [OCR] from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -180,15 +181,18 @@ class ZoomPipeline:
 
         # [OCR] self._ocr_executor = ThreadPoolExecutor(max_workers=1)
         # [OCR] self._ocr_futures: dict[int, Future] = {}  # slot_id → 진행 중인 OCR Future
+        self._face_executor = ThreadPoolExecutor(max_workers=self._cfg.yolo_max_det or 4)
 
     # ── 컨텍스트 매니저 ───────────────────────────────────────────────────────
 
     def open(self) -> "ZoomPipeline":
         cfg = self._cfg
-        self._face_detector = FaceMeshDetector(
-            min_detection_confidence=cfg.face_min_conf,
-            use_clahe=cfg.use_clahe,
-        )
+        # [B안] 공유 인스턴스 대신 슬롯별 lazy 초기화로 변경
+        # self._face_detector = FaceMeshDetector(
+        #     min_detection_confidence=cfg.face_min_conf,
+        #     use_clahe=cfg.use_clahe,
+        # )
+        self._face_detector = None
         if cfg.use_pose_fallback:
             self._pose_detector = PoseDetector(
                 min_detection_confidence=cfg.pose_conf,
@@ -200,8 +204,12 @@ class ZoomPipeline:
         return self
 
     def close(self):
-        if self._face_detector:
-            self._face_detector.close()
+        # [B안] 슬롯별 face_detector 정리
+        for sl in self._slots.values():
+            if sl.face_detector is not None:
+                sl.face_detector.close()
+                sl.face_detector = None
+        self._face_executor.shutdown(wait=False)
         if self._pose_detector:
             self._pose_detector.close()
         # [OCR] self._ocr_executor.shutdown(wait=False)
@@ -290,6 +298,9 @@ class ZoomPipeline:
         # 오래된 슬롯 삭제
         for sid in list(self._slots.keys()):
             if self._slots[sid].misses > cfg.slot_max_misses:
+                sl = self._slots[sid]
+                if sl.face_detector is not None:
+                    sl.face_detector.close()
                 del self._slots[sid]
                 self._pose_consec.pop(sid, None)
 
@@ -305,11 +316,14 @@ class ZoomPipeline:
 
         # ── 슬롯별 처리 ───────────────────────────────────────────────────────
         records: list[dict] = []
-        for sid, di in sorted(matches, key=lambda x: x[0]):
+        sorted_matches = sorted(matches, key=lambda x: x[0])
+
+        # [B안] Phase 1: bbox 안정화 + crop (순차, 빠름)
+        slot_prep: list[tuple] = []  # (sid, di, sl, det, thumb)
+        for sid, di in sorted_matches:
             sl  = self._slots[sid]
             det = dets[di]
 
-            # bbox 안정화
             det["box"] = tuple(map(int, stabilize_bbox(sl.box_smoothed, det["box"])))
             sl.box_smoothed = list(det["box"])
             sl.box = det["box"]
@@ -317,18 +331,37 @@ class ZoomPipeline:
             sl.conf = det["conf"]
             sl.last_seen_frame = frame_idx
 
-            # 장기 miss 후 복귀 시 상태 리셋 (stale PERCLOS/raw_hist에 의한 false DROWSY 방지)
             if sl.misses >= cfg.noface_hold_frames:
                 _reset_timers(sl, clear_perclos=True)
                 sl.raw_hist.clear()
                 sl.current_state = "NORMAL"
             sl.misses = 0
 
-            x1, y1, x2, y2 = det["box"]
             thumb = self._crop(frame, det["box"])
+            slot_prep.append((sid, di, sl, det, thumb))
 
-            # 얼굴 특징 추출
-            face_result = self._face_detector.detect(thumb, det["cls"])
+        # [B안] Phase 2: FaceMesh 병렬 실행 (슬롯별 독립 인스턴스)
+        def _run_facemesh(args):
+            sl, thumb, cls_name = args
+            if sl.face_detector is None:
+                sl.face_detector = FaceMeshDetector(
+                    min_detection_confidence=cfg.face_min_conf,
+                    use_clahe=cfg.use_clahe,
+                )
+            return sl.face_detector.detect(thumb, cls_name)
+
+        futures = {
+            sid: self._face_executor.submit(_run_facemesh, (sl, thumb, det["cls"]))
+            for sid, di, sl, det, thumb in slot_prep
+        }
+        face_results = {sid: f.result() for sid, f in futures.items()}
+
+        # [B안] Phase 3: 나머지 처리 (순차)
+        for sid, di, sl, det, thumb in slot_prep:
+            x1, y1, x2, y2 = det["box"]
+
+            # 얼굴 특징 추출 결과 수신
+            face_result = face_results[sid]
 
             # NoFace 연속 카운터 업데이트
             prev_noface_long = sl.noface_consec >= cfg.noface_hold_frames
