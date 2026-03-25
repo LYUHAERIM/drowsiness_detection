@@ -649,7 +649,7 @@ dependencies = [
 requires-dist = [
     { name = "coremltools", specifier = ">=8.0" },
     { name = "easyocr", specifier = ">=1.7.2" },
-    { name = "gradio", specifier = ">=5.0.0" },
+    { name = "gradio", specifier = ">=6.10.0" },
     { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "ipython", specifier = ">=9.11.0" },
     { name = "ipywidgets", specifier = ">=8.1.8" },
