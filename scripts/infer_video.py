@@ -122,6 +122,8 @@ class PipelineConfig:
 
     # No Face: 연속 N프레임 이상 미검출 시 NOFACE 확정 (순간 가림 필터링)
     noface_hold_frames: int = 15    # ≈1.5초 @ 10fps
+    # NoFace 폴백: 랜드마크 소실 시 최근 DROWSY 이력 참조 윈도우
+    drowsy_noface_window_sec: float = 3.0
 
     # Pose fallback (FaceMesh lm_ok=False일 때 PoseDetector로 고개 숙임 감지)
     use_pose_fallback: bool = False
@@ -174,7 +176,7 @@ class ZoomPipeline:
         self._slots: dict[int, SlotState] = {}
         self._next_slot_id = 1
         self._prev_layout_summary: Optional[dict] = None
-        self._last_layout_change_frame = -(10 ** 9)
+        # [OCR] self._last_layout_change_frame = -(10 ** 9)
         self._layout_boost_until = -1
         self._pose_consec: dict[int, int] = {}  # slot_id → 연속 pose_head_down 프레임 수
 
@@ -249,13 +251,14 @@ class ZoomPipeline:
         # ── 레이아웃 변화 감지 ─────────────────────────────────────────────────
         curr_layout = dict(Counter(d["cls"] for d in dets))
         if detect_layout_change(self._prev_layout_summary, curr_layout):
-            cooldown = int(cfg.layout_change_cooldown * fps)
-            if frame_idx - self._last_layout_change_frame >= cooldown:
-                self._last_layout_change_frame = frame_idx
-                # [OCR] self._layout_boost_until = frame_idx + int(cfg.layout_boost_sec * fps)
-                # [OCR] for s in self._slots.values():
-                # [OCR]     s.name_votes = s.name_votes[-1:]
-                # [OCR]     s.name_final = ""
+            # cooldown = int(cfg.layout_change_cooldown * fps)
+            # if frame_idx - self._last_layout_change_frame >= cooldown:
+            #     self._last_layout_change_frame = frame_idx
+            # [OCR] self._layout_boost_until = frame_idx + int(cfg.layout_boost_sec * fps)
+            # [OCR] for s in self._slots.values():
+            # [OCR]     s.name_votes = s.name_votes[-1:]
+            # [OCR]     s.name_final = ""
+            pass
         self._prev_layout_summary = curr_layout
 
         # ── 슬롯 매칭 ─────────────────────────────────────────────────────────
@@ -368,6 +371,31 @@ class ZoomPipeline:
             )
             update_baselines(sl, face_result, final_state, ts, cfg.drowsiness)
 
+            # last_drowsy_ts 갱신
+            if final_state == "DROWSY":
+                sl.last_drowsy_ts = ts
+
+            # NoFace 폴백: 랜드마크 소실 시 상태 결정
+            # - 움직임 있음 (필기 등)          → NORMAL
+            # - 최근 DROWSY 이력 + 저모션      → DROWSY 유지
+            # - 이력 없음                      → NOFACE 표시
+            # is_noface(15프레임 확정)와 무관하게 얼굴이 사라진 첫 프레임부터 적용
+            face_gone = not face_result.lm_ok and not face_result.face_ok
+            display_noface = is_noface
+            if face_gone:
+                active_motion = (
+                    not np.isnan(motion) and motion > cfg.drowsiness.low_motion_th
+                )
+                recent_drowsy = (ts - sl.last_drowsy_ts) <= cfg.drowsy_noface_window_sec
+                if active_motion:
+                    final_state = "NORMAL"
+                    sl.current_state = "NORMAL"
+                    display_noface = False
+                elif recent_drowsy:
+                    final_state = "DROWSY"
+                    sl.current_state = "DROWSY"
+                    display_noface = False
+
             sl.total_frames += 1
             if final_state == "DROWSY":   sl.frames_drowsy += 1
             elif final_state == "YAWN":   sl.frames_yawn   += 1
@@ -380,7 +408,7 @@ class ZoomPipeline:
             # 시각화
             draw_slot_bbox(
                 canvas, sid, det["box"], det["cls"], final_state, BOX_COLORS, STATE_COLORS,
-                no_face=is_noface,
+                no_face=display_noface,
             )
             draw_face_box(canvas, (x1, y1), face_result.face_box)
 
@@ -395,7 +423,7 @@ class ZoomPipeline:
                 canvas, sl, face_result, (ix, iy),
                 final_state, STATE_COLORS,
                 box_w=cfg.info_box_w - 4,
-                is_noface=is_noface,
+                is_noface=display_noface,
             )
 
             records.append({

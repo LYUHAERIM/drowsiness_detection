@@ -87,10 +87,10 @@ class DrowsinessConfig:
     wake_consec_sec: float = 0.5    # 0.5초 연속 큰 움직임 시 wakeup 확정
 
     # 회복 / 스무딩
-    recover_sec: float = 0.1
+    recover_sec: float = 1.5
     absent_hold_sec: float = 0.8
     absent_recover_sec: float = 0.5
-    smooth_window_sec: float = 0.2
+    smooth_window_sec: float = 0.7
 
     # PERCLOS+pitch 조건: 현재 EAR이 이 비율 이상이면 발동 차단
     # → 과거 PERCLOS 누적값이 있어도 현재 눈을 충분히 뜨고 있으면 DROWSY 방지
@@ -326,8 +326,8 @@ def update_drowsiness_state(
         if   ear_strong and aux >= 1:               drowsy_reason = f"EAR+aux({aux})"
         # EAR 단독 조건 없음: 개인 눈 크기 차이·순간 깜빡임에 의한 false positive 방지
         elif perclos_hi and pitch_flag and not ear_now_ok:  drowsy_reason = "PERCLOS+pitch"
-        elif tilt_flag  and pitch_flag:             drowsy_reason = "tilt+pitch"
-        elif mar_flag   and pitch_flag:             drowsy_reason = "MAR+pitch"
+        elif tilt_flag  and pitch_flag and not ear_now_ok:  drowsy_reason = "tilt+pitch"
+        elif mar_flag   and pitch_flag and not ear_now_ok:  drowsy_reason = "MAR+pitch"
         elif mar_flag   and ear_strong:             drowsy_reason = "MAR+EAR"
 
     # Level2: face_center_y fallback
