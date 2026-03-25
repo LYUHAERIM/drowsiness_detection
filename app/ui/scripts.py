@@ -42,6 +42,21 @@ def build_head_script() -> str:
         return Number.isFinite(ackValue) ? ackValue : 0;
     }
 
+    function clickHiddenButton(buttonId) {
+        const root = document.getElementById(buttonId);
+        if (!root) return;
+        const btn = root.querySelector("button") || root;
+        btn.click();
+    }
+
+    function triggerPanelStart() {
+        clickHiddenButton("real-start-btn");
+    }
+
+    function triggerPanelStop() {
+        clickHiddenButton("real-stop-btn");
+    }
+
     async function captureAndSubmitFrame() {
         const state = overlayState();
         const video = document.getElementById("student-cam");
@@ -58,7 +73,10 @@ def build_head_script() -> str:
         if (state.inFlight) return;
 
         const width = Math.min(video.videoWidth || 640, 640);
-        const height = Math.max(1, Math.round(width * ((video.videoHeight || 480) / (video.videoWidth || 640))));
+        const height = Math.max(
+            1,
+            Math.round(width * ((video.videoHeight || 480) / (video.videoWidth || 640)))
+        );
 
         if (!state.canvas) {
             state.canvas = document.createElement("canvas");
@@ -114,6 +132,7 @@ def build_head_script() -> str:
             if (state.intervalId) {
                 window.clearInterval(state.intervalId);
             }
+
             state.intervalId = window.setInterval(() => {
                 captureAndSubmitFrame().catch((err) => {
                     console.error("프레임 전송 실패:", err);

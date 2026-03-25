@@ -48,7 +48,7 @@ def build_stage_html(stage_media_url: str, stage_media_kind: str) -> str:
         </div>
 
         <div id="stage-caption">
-            피그마 시안처럼 실제 강의 화면 위에 내 카메라만 3번째 학생 슬롯에 오버레이합니다.
+            실제 강의 화면 위에 내 카메라만 3번째 학생 슬롯에 오버레이합니다.
         </div>
     </div>
     """

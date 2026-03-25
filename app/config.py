@@ -11,7 +11,7 @@ STAGE_MEDIA_PATH = ASSETS_DIR / "demo_bg.mp4"
 BG_W = 1920
 BG_H = 1080
 
-# 피그마 기준 3번째 학생 슬롯 위치
+# 3번째 학생 슬롯 위치
 SLOT_X = 1724
 SLOT_Y = 450
 SLOT_W = 180
