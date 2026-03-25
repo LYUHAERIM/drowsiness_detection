@@ -10,69 +10,9 @@ from app.inference.runtime import RUNTIME, RuntimeSnapshot
 
 Status = str
 
-MOCK_CSV_DATA = [
-    {
-        "timestamp": "00:00:00",
-        "student1": "NORMAL",
-        "student2": "NORMAL",
-        "student4": "NORMAL",
-        "student5": "NORMAL",
-    },
-    {
-        "timestamp": "00:00:02",
-        "student1": "NORMAL",
-        "student2": "DROWSY",
-        "student4": "NORMAL",
-        "student5": "NORMAL",
-    },
-    {
-        "timestamp": "00:00:04",
-        "student1": "DROWSY",
-        "student2": "NORMAL",
-        "student4": "NORMAL",
-        "student5": "NORMAL",
-    },
-    {
-        "timestamp": "00:00:06",
-        "student1": "NORMAL",
-        "student2": "NORMAL",
-        "student4": "ABSENT",
-        "student5": "NORMAL",
-    },
-    {
-        "timestamp": "00:00:08",
-        "student1": "NORMAL",
-        "student2": "NORMAL",
-        "student4": "NORMAL",
-        "student5": "DROWSY",
-    },
-    {
-        "timestamp": "00:00:10",
-        "student1": "ABSENT",
-        "student2": "NORMAL",
-        "student4": "NORMAL",
-        "student5": "NORMAL",
-    },
-]
-
-STUDENT_NAMES = {
-    "student1": "강현민",
-    "student2": "박현승",
-    "student3": "나",
-    "student4": "김주원",
-    "student5": "김대희",
-}
-
-
 def _initial_report_data():
     return {
-        "students": [
-            {"id": 1, "name": "강현민", "normal": 0, "drowsy": 0, "absent": 0},
-            {"id": 2, "name": "박현승", "normal": 0, "drowsy": 0, "absent": 0},
-            {"id": 3, "name": "나", "normal": 0, "drowsy": 0, "absent": 0},
-            {"id": 4, "name": "김주원", "normal": 0, "drowsy": 0, "absent": 0},
-            {"id": 5, "name": "김대희", "normal": 0, "drowsy": 0, "absent": 0},
-        ],
+        "students": [],
         "total_time": 0,
     }
 
@@ -80,17 +20,8 @@ def _initial_report_data():
 PANEL_STATE = {
     "is_running": False,
     "session_started_at": None,
-    "last_csv_step": 0,
     "last_report_second": 0,
-    "current_data_index": 0,
-    "my_status": "NORMAL",
-    "prev_my_status": "NORMAL",
-    "other_students_status": {
-        "student1": "NORMAL",
-        "student2": "NORMAL",
-        "student4": "NORMAL",
-        "student5": "NORMAL",
-    },
+    "students_status": {},
     "alerts": [],
     "report_data": _initial_report_data(),
 }
@@ -99,17 +30,8 @@ PANEL_STATE = {
 def _reset_panel_state() -> None:
     PANEL_STATE["is_running"] = True
     PANEL_STATE["session_started_at"] = time.time()
-    PANEL_STATE["last_csv_step"] = 0
     PANEL_STATE["last_report_second"] = 0
-    PANEL_STATE["current_data_index"] = 0
-    PANEL_STATE["my_status"] = "NORMAL"
-    PANEL_STATE["prev_my_status"] = "NORMAL"
-    PANEL_STATE["other_students_status"] = {
-        "student1": "NORMAL",
-        "student2": "NORMAL",
-        "student4": "NORMAL",
-        "student5": "NORMAL",
-    }
+    PANEL_STATE["students_status"] = {}
     PANEL_STATE["alerts"] = []
     PANEL_STATE["report_data"] = _initial_report_data()
 
@@ -164,63 +86,66 @@ def _push_alert(alert_type: Status, message: str) -> None:
     PANEL_STATE["alerts"] = [new_alert, *PANEL_STATE["alerts"][:9]]
 
 
-def _advance_other_students(elapsed_sec: int) -> None:
-    target_step = elapsed_sec // 2
-    while PANEL_STATE["last_csv_step"] < target_step:
-        next_index = (PANEL_STATE["current_data_index"] + 1) % len(MOCK_CSV_DATA)
-        current_data = MOCK_CSV_DATA[next_index]
+def _find_report_student(student_id: int) -> dict | None:
+    for student in PANEL_STATE["report_data"]["students"]:
+        if student["id"] == student_id:
+            return student
+    return None
 
-        new_statuses = {
-            "student1": current_data["student1"].upper(),
-            "student2": current_data["student2"].upper(),
-            "student4": current_data["student4"].upper(),
-            "student5": current_data["student5"].upper(),
+
+def _ensure_report_student(student: dict) -> dict:
+    student_id = int(student.get("id", 0))
+    existing = _find_report_student(student_id)
+    if existing is not None:
+        if student.get("name"):
+            existing["name"] = student["name"]
+        return existing
+
+    report_student = {
+        "id": student_id,
+        "name": student.get("name") or f"학생 {student_id}",
+        "normal": 0,
+        "drowsy": 0,
+        "absent": 0,
+    }
+    PANEL_STATE["report_data"]["students"].append(report_student)
+    PANEL_STATE["report_data"]["students"].sort(key=lambda item: item["id"])
+    return report_student
+
+
+def _sync_students(snapshot: RuntimeSnapshot) -> None:
+    new_status_map: dict[int, dict] = {}
+
+    for student in snapshot.students:
+        student_id = int(student.get("id", 0))
+        status = (student.get("status") or "NORMAL").upper()
+        name = student.get("name") or f"학생 {student_id}"
+        previous = PANEL_STATE["students_status"].get(student_id)
+
+        if previous is not None and previous["status"] != status and status != "NORMAL":
+            message = (
+                f"{name} 학생의 졸음이 감지되었습니다."
+                if status == "DROWSY"
+                else f"{name} 학생이 자리를 이탈했습니다."
+            )
+            _push_alert(status, message)
+
+        new_status_map[student_id] = {
+            "id": student_id,
+            "name": name,
+            "status": status,
+            "reason": student.get("reason") or "",
         }
+        _ensure_report_student(student)
 
-        for key, status in new_statuses.items():
-            prev_status = PANEL_STATE["other_students_status"][key]
-            if prev_status != status and status != "NORMAL":
-                student_name = STUDENT_NAMES[key]
-                message = (
-                    f"⚠️ {student_name} 학생의 졸음이 감지되었습니다!"
-                    if status == "DROWSY"
-                    else f"🚨 {student_name} 학생이 자리를 이탈했습니다!"
-                )
-                _push_alert(status, message)
-
-        PANEL_STATE["other_students_status"] = new_statuses
-        PANEL_STATE["current_data_index"] = next_index
-        PANEL_STATE["last_csv_step"] += 1
-
-
-def _advance_my_status(snapshot_status: str) -> None:
-    current_status = (snapshot_status or "NORMAL").upper()
-    prev_status = PANEL_STATE["prev_my_status"]
-
-    if prev_status != current_status and current_status != "NORMAL":
-        message = (
-            "⚠️ 내 졸음이 감지되었습니다. 집중해 주세요!"
-            if current_status == "DROWSY"
-            else "🚨 내가 자리를 이탈했습니다!"
-        )
-        _push_alert(current_status, message)
-
-    PANEL_STATE["my_status"] = current_status
-    PANEL_STATE["prev_my_status"] = current_status
+    PANEL_STATE["students_status"] = new_status_map
 
 
 def _advance_report(elapsed_sec: int) -> None:
     while PANEL_STATE["last_report_second"] < elapsed_sec:
-        status_map = {
-            1: PANEL_STATE["other_students_status"]["student1"],
-            2: PANEL_STATE["other_students_status"]["student2"],
-            3: PANEL_STATE["my_status"],
-            4: PANEL_STATE["other_students_status"]["student4"],
-            5: PANEL_STATE["other_students_status"]["student5"],
-        }
-
-        for student in PANEL_STATE["report_data"]["students"]:
-            current_status = status_map[student["id"]]
+        for student_state in PANEL_STATE["students_status"].values():
+            student = _ensure_report_student(student_state)
+            current_status = student_state["status"]
             if current_status == "NORMAL":
                 student["normal"] += 1
             elif current_status == "DROWSY":
@@ -237,8 +162,7 @@ def _sync_panel_state(snapshot: RuntimeSnapshot) -> None:
         return
 
     elapsed_sec = int(time.time() - PANEL_STATE["session_started_at"])
-    _advance_other_students(elapsed_sec)
-    _advance_my_status(snapshot.status)
+    _sync_students(snapshot)
     _advance_report(elapsed_sec)
 
 
@@ -760,12 +684,12 @@ def _debug_text(snapshot: RuntimeSnapshot) -> str:
     report_data = PANEL_STATE["report_data"]
     total = report_data["total_time"]
     alerts_count = len(PANEL_STATE["alerts"])
+    tracked = len(PANEL_STATE["students_status"])
 
     return (
         f"{snapshot.debug_text}\n"
         f"panel_running={PANEL_STATE['is_running']} "
-        f"my_status={PANEL_STATE['my_status']} "
-        f"csv_index={PANEL_STATE['current_data_index']} "
+        f"tracked_students={tracked} "
         f"total_time={total} "
         f"alerts={alerts_count}"
     )
@@ -777,12 +701,16 @@ def _report_text() -> str:
     students = report_data["students"]
 
     student_lines = [
-        f"{student['name']}: {_student_normal_percent(student)} 정상"
+        (
+            f"{student['name']}: {_student_normal_percent(student)} 정상 "
+            f"(N {student['normal']} / D {student['drowsy']} / A {student['absent']})"
+        )
         for student in students
     ]
 
     return (
         f"Total Time: {_format_duration(report_data['total_time'])}\n"
+        f"Tracked Students: {len(students)}\n"
         f"Normal: {_percent(total_stats['normal'], total_stats['total'])}\n"
         f"Drowsy: {_percent(total_stats['drowsy'], total_stats['total'])}\n"
         f"Absent: {_percent(total_stats['absent'], total_stats['total'])}\n"
@@ -790,8 +718,10 @@ def _report_text() -> str:
     )
 
 
-def _latest_alert_text() -> str:
+def _latest_alert_text(snapshot: RuntimeSnapshot | None = None) -> str:
     if not PANEL_STATE["alerts"]:
+        if snapshot is not None and snapshot.alert:
+            return snapshot.alert
         return "알림이 없습니다."
     latest = PANEL_STATE["alerts"][0]
     return latest["message"]
@@ -801,13 +731,13 @@ def _render_outputs(snapshot: RuntimeSnapshot, ack: int):
     panel_html = render_panel_html(
         camera_state="ON" if snapshot.running else "OFF",
         status=snapshot.status,
-        alert=_latest_alert_text(),
+        alert=_latest_alert_text(snapshot),
         report=_report_text(),
         is_running=snapshot.running,
     )
     return (
         snapshot.status,
-        _latest_alert_text(),
+        _latest_alert_text(snapshot),
         _report_text(),
         panel_html,
         _debug_text(snapshot),
@@ -822,12 +752,12 @@ def on_start():
     return (
         True,
         snapshot.status,
-        _latest_alert_text(),
+        _latest_alert_text(snapshot),
         _report_text(),
         render_panel_html(
             camera_state="ON",
             status=snapshot.status,
-            alert=_latest_alert_text(),
+            alert=_latest_alert_text(snapshot),
             report=_report_text(),
             is_running=True,
         ),
@@ -842,12 +772,12 @@ def on_stop(frame_ack: int):
     return (
         False,
         snapshot.status,
-        _latest_alert_text(),
+        _latest_alert_text(snapshot),
         _report_text(),
         render_panel_html(
             camera_state="OFF",
             status=snapshot.status,
-            alert=_latest_alert_text(),
+            alert=_latest_alert_text(snapshot),
             report=_report_text(),
             is_running=False,
         ),
