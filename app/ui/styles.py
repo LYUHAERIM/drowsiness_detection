@@ -201,6 +201,15 @@ def build_css() -> str:
         border: 1px dashed rgba(255, 255, 255, 0.18);
     }}
 
+    #bbox-overlay {{
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 5;
+        pointer-events: none;
+    }}
+
     #stage-caption {{
         margin-top: 10px;
         color: var(--muted);

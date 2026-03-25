@@ -45,10 +45,11 @@ def build_stage_html(stage_media_url: str, stage_media_kind: str) -> str:
             {stage_media_html}
             <div id="cam-placeholder">Start 버튼을 눌러 카메라를 켜세요.</div>
             <video id="student-cam" autoplay muted playsinline></video>
+            <canvas id="bbox-overlay"></canvas>
         </div>
 
         <div id="stage-caption">
-            실제 강의 화면 위에 내 카메라만 3번째 학생 슬롯에 오버레이합니다.
+            실시간 감지 결과가 화면 위에 직접 표시됩니다.
         </div>
     </div>
     """

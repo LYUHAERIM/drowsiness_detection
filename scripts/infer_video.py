@@ -124,6 +124,9 @@ class PipelineConfig:
     noface_hold_frames: int = 15    # ≈1.5초 @ 10fps
     # NoFace 폴백: 랜드마크 소실 시 최근 DROWSY 이력 참조 윈도우
     drowsy_noface_window_sec: float = 3.0
+    # NoFace 폴백 상한: 연속 NoFace 프레임이 이 값을 초과하면 DROWSY fallback 중단
+    # → 작은 썸네일처럼 FaceMesh가 영구 실패하는 경우 DROWSY 무한 고착 방지
+    noface_max_drowsy_hold: int = 30  # ≈3초 @ 10fps, ≈6초 @ 5fps
 
     # Pose fallback (FaceMesh lm_ok=False일 때 PoseDetector로 고개 숙임 감지)
     use_pose_fallback: bool = False
@@ -422,7 +425,7 @@ class ZoomPipeline:
                     final_state = "NORMAL"
                     sl.current_state = "NORMAL"
                     display_noface = False
-                elif recent_drowsy:
+                elif recent_drowsy and sl.noface_consec <= cfg.noface_max_drowsy_hold:
                     final_state = "DROWSY"
                     sl.current_state = "DROWSY"
                     display_noface = False

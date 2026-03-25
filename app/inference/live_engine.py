@@ -2,37 +2,46 @@ from __future__ import annotations
 
 import base64
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 import cv2
 import numpy as np
+import torch
+from ultralytics import YOLO
 
-from src.detection.drowsiness import (
-    DrowsinessConfig,
-    compute_motion,
-    update_baselines,
-    update_drowsiness_state,
-)
-from src.detection.face import FaceMeshDetector
-from src.tracking.slot import SlotState
+from scripts.infer_video import PipelineConfig, ZoomPipeline
+
+
+@dataclass
+class SlotInfo:
+    slot_id: int
+    name: str
+    status: str
+    class_name: str
+    is_teacher: bool
+    ear: float
+    mar: float
+    box_pct: tuple = field(default_factory=lambda: (0.0, 0.0, 0.0, 0.0))  # (x1%, y1%, x2%, y2%)
+    noface: bool = False
 
 
 @dataclass
 class LiveInferenceResult:
-    status: str
+    slots: list[SlotInfo]
+    status: str           # 대표 상태 (DROWSY 우선, 없으면 NORMAL)
     alert: str
     report: str
     debug_text: str
-    reason: str
     frame_received: bool
     frame_index: int
+    annotated_frame: Optional[np.ndarray] = None
 
 
 def decode_data_url_to_bgr(data_url: str) -> Optional[np.ndarray]:
     if not data_url or "," not in data_url:
         return None
-
     try:
         encoded = data_url.split(",", 1)[1]
         image_bytes = base64.b64decode(encoded)
@@ -43,41 +52,62 @@ def decode_data_url_to_bgr(data_url: str) -> Optional[np.ndarray]:
         return None
 
 
-class LiveDrowsinessEngine:
-    def __init__(self, fps: float = 5.0):
+def _select_device() -> int | str:
+    if torch.cuda.is_available():
+        return 0
+    try:
+        mps_available = getattr(getattr(torch, "backends", None), "mps", None)
+        if mps_available is not None and mps_available.is_available():
+            return "mps"
+    except Exception:
+        pass
+    return "cpu"
+
+
+class LiveZoomEngine:
+    """ZoomPipeline을 실시간 Gradio 추론에 사용하는 엔진."""
+
+    def __init__(self, checkpoint_path: str | Path, fps: float = 5.0):
         self.fps = fps
-        self.cfg = DrowsinessConfig()
-        self.face_detector = FaceMeshDetector(
-            min_detection_confidence=0.25,
-            use_clahe=True,
-        )
+        self._checkpoint_path = str(checkpoint_path)
 
-        self.slot = SlotState(
-            slot_id=1,
-            box=(0, 0, 0, 0),
-            class_name="person_on",
-            conf=1.0,
-            last_seen_frame=0,
+        device = _select_device()
+        self._model = YOLO(self._checkpoint_path)
+        self._model.to(device if isinstance(device, str) else f"cuda:{device}")
+
+        self._config = PipelineConfig(
+            target_fps=fps,
+            device=device,
+            ocr_retry_interval=30,   # 90 → 30: 6초마다 재시도 (fps=5 기준)
+            ocr_fast_interval=5,     # 20 → 5: 시작 직후 1초마다
         )
+        self._pipeline: Optional[ZoomPipeline] = None
+        self._open_pipeline()
 
         self.started_at = time.time()
         self.frame_count = 0
-        self.last_reason = "init"
 
-    def reset(self):
-        self.slot = SlotState(
-            slot_id=1,
-            box=(0, 0, 0, 0),
-            class_name="person_on",
-            conf=1.0,
-            last_seen_frame=0,
-        )
+    def _open_pipeline(self) -> None:
+        if self._pipeline is not None:
+            try:
+                self._pipeline.close()
+            except Exception:
+                pass
+        self._pipeline = ZoomPipeline(self._model, self._config)
+        self._pipeline.open()
+
+    def reset(self) -> None:
+        self._open_pipeline()
         self.started_at = time.time()
         self.frame_count = 0
-        self.last_reason = "reset"
 
-    def close(self):
-        self.face_detector.close()
+    def close(self) -> None:
+        if self._pipeline is not None:
+            try:
+                self._pipeline.close()
+            except Exception:
+                pass
+            self._pipeline = None
 
     def analyze_data_url(self, data_url: str) -> LiveInferenceResult:
         frame = decode_data_url_to_bgr(data_url)
@@ -86,108 +116,94 @@ class LiveDrowsinessEngine:
     def analyze_bgr(self, frame: Optional[np.ndarray]) -> LiveInferenceResult:
         if frame is None:
             return LiveInferenceResult(
+                slots=[],
                 status="NORMAL",
                 alert="프레임을 아직 받지 못했습니다.",
                 report="실시간 카메라 프레임 대기 중",
                 debug_text="frame=None",
-                reason="frame_missing",
                 frame_received=False,
                 frame_index=self.frame_count,
             )
 
         self.frame_count += 1
-        ts = time.time() - self.started_at
 
-        h, w = frame.shape[:2]
-        self.slot.box = (0, 0, w, h)
-        self.slot.class_name = "person_on"
-        self.slot.last_seen_frame = self.frame_count
-
-        face_result = self.face_detector.detect(frame, cls_name="person_on")
-
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        motion = compute_motion(
-            self.slot.prev_gray,
-            gray,
-            face_box=face_result.face_box,
-            thumb_shape=gray.shape,
-        )
-        self.slot.prev_gray = gray
-
-        raw_state, final_state, reason = update_drowsiness_state(
-            slot=self.slot,
-            face_result=face_result,
-            motion=motion,
-            cls_name="person_on",
+        canvas, records = self._pipeline.process_frame(
+            frame,
+            frame_idx=self.frame_count,
             fps=self.fps,
-            ts=ts,
-            cfg=self.cfg,
-        )
-        self.last_reason = reason
-
-        update_baselines(
-            slot=self.slot,
-            face_result=face_result,
-            final_state=final_state,
-            ts=ts,
-            cfg=self.cfg,
         )
 
-        self._update_stats(final_state)
+        # records → SlotInfo 목록으로 변환
+        frame_h, frame_w = frame.shape[:2]
+        MIN_BBOX_W, MIN_BBOX_H = 100, 100  # 1920x1080 기준 최소 bbox 크기
+
+        slots: list[SlotInfo] = []
+        for r in records:
+            ear = r.get("ear", float("nan"))
+            mar = r.get("mar", float("nan"))
+            x1, y1, x2, y2 = r.get("x1", 0), r.get("y1", 0), r.get("x2", 0), r.get("y2", 0)
+            bw, bh = x2 - x1, y2 - y1
+            box_pct = (x1 / frame_w, y1 / frame_h, x2 / frame_w, y2 / frame_h)
+
+            status = r["final_state"]
+            # bbox가 너무 작으면 FaceMesh 결과를 신뢰할 수 없으므로 NORMAL 처리
+            if not bool(r.get("is_teacher", 0)) and (bw < MIN_BBOX_W or bh < MIN_BBOX_H):
+                status = "NORMAL"
+
+            noface = not bool(r.get("lm_ok", 1)) and not bool(r.get("face_ok", 1))
+
+            slots.append(SlotInfo(
+                slot_id=r["slot_id"],
+                name=r["name"] or f"학생 {r['slot_id']}",
+                status=status,
+                class_name=r["cls_name"],
+                is_teacher=bool(r.get("is_teacher", 0)),
+                ear=ear if not (isinstance(ear, float) and np.isnan(ear)) else 0.0,
+                mar=mar if not (isinstance(mar, float) and np.isnan(mar)) else 0.0,
+                box_pct=box_pct,
+                noface=noface,
+            ))
+
+        # 대표 상태: DROWSY > YAWN > ABSENT > NORMAL
+        priority = {"DROWSY": 3, "YAWN": 2, "ABSENT": 1, "NORMAL": 0}
+        rep_status = "NORMAL"
+        if slots:
+            rep_status = max(
+                (s.status for s in slots if not s.is_teacher),
+                key=lambda x: priority.get(x, 0),
+                default="NORMAL",
+            )
 
         alert_map = {
             "NORMAL": "이상 없음",
             "DROWSY": "졸음 감지 알림",
+            "YAWN": "하품 감지",
             "ABSENT": "자리 이탈 알림",
-            "IGNORE": "분석 제외 상태",
         }
-        alert = alert_map.get(final_state, "상태를 확인할 수 없습니다")
+        alert = alert_map.get(rep_status, "상태를 확인할 수 없습니다")
 
-        report = (
-            f"총 프레임: {self.frame_count}\n"
-            f"NORMAL: {self.slot.frames_normal}\n"
-            f"DROWSY: {self.slot.frames_drowsy}\n"
-            f"ABSENT: {self.slot.frames_absent}\n"
-            f"최근 reason: {self.last_reason}"
-        )
+        student_slots = [s for s in slots if not s.is_teacher]
+        drowsy_names = [s.name for s in student_slots if s.status == "DROWSY"]
+        absent_names = [s.name for s in student_slots if s.status == "ABSENT"]
 
-        debug_text = (
-            f"raw={raw_state}, final={final_state}, " f"ear={face_result.ear:.4f} "
-            if not np.isnan(face_result.ear)
-            else f"raw={raw_state}, final={final_state}, ear=nan "
+        report_lines = [f"총 프레임: {self.frame_count}", f"감지된 슬롯: {len(slots)}명"]
+        if drowsy_names:
+            report_lines.append(f"졸음: {', '.join(drowsy_names)}")
+        if absent_names:
+            report_lines.append(f"이탈: {', '.join(absent_names)}")
+
+        slot_debug = " | ".join(
+            f"[{s.slot_id}]{s.name}={s.status}" for s in slots
         )
-        debug_text += (
-            f"mar={face_result.mar:.4f} "
-            if not np.isnan(face_result.mar)
-            else "mar=nan "
-        )
-        debug_text += (
-            f"pitch={face_result.pitch_like:.4f} "
-            if not np.isnan(face_result.pitch_like)
-            else "pitch=nan "
-        )
-        debug_text += (
-            f"center_y={face_result.face_center_y:.4f} "
-            if not np.isnan(face_result.face_center_y)
-            else "center_y=nan "
-        )
-        debug_text += f"motion={motion:.4f}" if not np.isnan(motion) else "motion=nan"
+        debug_text = f"frame={self.frame_count} slots={len(slots)} {slot_debug}"
 
         return LiveInferenceResult(
-            status=final_state,
+            slots=slots,
+            status=rep_status,
             alert=alert,
-            report=report,
+            report="\n".join(report_lines),
             debug_text=debug_text,
-            reason=self.last_reason,
             frame_received=True,
             frame_index=self.frame_count,
+            annotated_frame=canvas,
         )
-
-    def _update_stats(self, final_state: str):
-        self.slot.total_frames += 1
-        if final_state == "NORMAL":
-            self.slot.frames_normal += 1
-        elif final_state == "DROWSY":
-            self.slot.frames_drowsy += 1
-        elif final_state == "ABSENT":
-            self.slot.frames_absent += 1
