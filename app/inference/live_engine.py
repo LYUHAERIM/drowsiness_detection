@@ -23,6 +23,7 @@ from src.tracking.slot import (
     sort_detections_reading_order,
     stabilize_bbox,
 )
+from src.visual.annotator import draw_text_bg
 
 LOGGER = logging.getLogger(__name__)
 
@@ -42,7 +43,9 @@ def _empty_face_result() -> FaceMeshResult:
 
 
 class _FallbackFaceDetector:
-    def detect(self, _thumb_bgr: np.ndarray, cls_name: str = "person_on") -> FaceMeshResult:
+    def detect(
+        self, _thumb_bgr: np.ndarray, cls_name: str = "person_on"
+    ) -> FaceMeshResult:
         return _empty_face_result()
 
     def close(self):
@@ -59,6 +62,7 @@ class LiveInferenceResult:
     frame_received: bool
     frame_index: int
     students: list[dict] = field(default_factory=list)
+    overlay_data_url: str = ""
 
 
 def decode_data_url_to_bgr(data_url: str) -> Optional[np.ndarray]:
@@ -76,6 +80,18 @@ def decode_data_url_to_bgr(data_url: str) -> Optional[np.ndarray]:
         return None
 
 
+def encode_bgr_to_data_url(frame: np.ndarray, quality: int = 85) -> str:
+    ok, encoded = cv2.imencode(
+        ".jpg",
+        frame,
+        [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)],
+    )
+    if not ok:
+        return ""
+    payload = base64.b64encode(encoded.tobytes()).decode("ascii")
+    return f"data:image/jpeg;base64,{payload}"
+
+
 class MultiStudentEngine:
     def __init__(self, fps: float = 5.0):
         self.fps = fps
@@ -84,7 +100,9 @@ class MultiStudentEngine:
         self.detect_interval = 3
         self.ocr_interval = 15
         self.max_slot_misses = max(3, int(round(fps * 2.0)))
-        self.model_name = os.getenv("DROWSINESS_YOLO_MODEL", "yolo11n.pt")
+        self.model_name = os.getenv(
+            "DROWSINESS_YOLO_MODEL", "checkpoint/yolo11n/weights/best.pt"
+        )
 
         self.face_detector = None
         self.name_reader = None
@@ -166,6 +184,7 @@ class MultiStudentEngine:
                 frame_received=False,
                 frame_index=self.frame_count,
                 students=[],
+                overlay_data_url="",
             )
 
         self.frame_count += 1
@@ -185,6 +204,7 @@ class MultiStudentEngine:
         alert = self._build_alert_text(student_rows)
         report = self._build_report_text(student_rows)
         debug_text = self._build_debug_text(student_rows)
+        overlay_data_url = self._render_overlay_frame(frame, detections, student_rows)
 
         return LiveInferenceResult(
             status=summary_status,
@@ -195,6 +215,7 @@ class MultiStudentEngine:
             frame_received=True,
             frame_index=self.frame_count,
             students=student_rows,
+            overlay_data_url=overlay_data_url,
         )
 
     def _get_detections(self, frame: np.ndarray) -> list[dict]:
@@ -204,7 +225,9 @@ class MultiStudentEngine:
             or not self.last_detections
         )
         if not should_detect:
-            self.last_detection_debug = f"detect=cached count={len(self.last_detections)}"
+            self.last_detection_debug = (
+                f"detect=cached count={len(self.last_detections)}"
+            )
             return list(self.last_detections)
 
         detections = self._run_yolo_detection(frame)
@@ -222,7 +245,6 @@ class MultiStudentEngine:
         try:
             results = self.yolo_model.predict(
                 source=frame,
-                classes=[0],
                 conf=0.25,
                 iou=0.45,
                 verbose=False,
@@ -249,9 +271,17 @@ class MultiStudentEngine:
                     "box": (x1, y1, x2, y2),
                     "cls": "person_on",
                     "conf": float(box.conf[0].item()) if box.conf is not None else 0.0,
+                    "label": self._yolo_label_name(box),
                 }
             )
         return dets
+
+    def _yolo_label_name(self, box) -> str:
+        try:
+            cls_idx = int(box.cls[0].item())
+            return str(self.yolo_model.names.get(cls_idx, cls_idx))
+        except Exception:
+            return "student"
 
     def _update_slots(self, frame: np.ndarray, detections: list[dict]) -> None:
         _, frame_w = frame.shape[:2]
@@ -303,7 +333,9 @@ class MultiStudentEngine:
         self.next_slot_id += 1
         return slot_id
 
-    def _run_slot_inference(self, frame: np.ndarray, slot: SlotState, ts: float) -> dict:
+    def _run_slot_inference(
+        self, frame: np.ndarray, slot: SlotState, ts: float
+    ) -> dict:
         crop = self._crop_bbox(frame, slot.box)
         if crop is None:
             slot.class_name = "person_off"
@@ -404,7 +436,9 @@ class MultiStudentEngine:
         elif final_state == "ABSENT":
             slot.frames_absent += 1
 
-    def _student_row(self, slot: SlotState, raw_state: str, final_state: str, reason: str) -> dict:
+    def _student_row(
+        self, slot: SlotState, raw_state: str, final_state: str, reason: str
+    ) -> dict:
         return {
             "id": slot.slot_id,
             "name": slot.name_final or f"학생 {slot.slot_id}",
@@ -414,6 +448,9 @@ class MultiStudentEngine:
             "bbox": list(slot.box),
             "present": slot.class_name == "person_on" and slot.misses == 0,
             "name_conf": round(float(slot.name_conf), 3),
+            "conf": round(float(slot.conf), 3),
+            "class_name": slot.class_name,
+            "misses": int(slot.misses),
         }
 
     def _summarize_status(self, students: list[dict]) -> str:
@@ -424,15 +461,19 @@ class MultiStudentEngine:
         return "NORMAL"
 
     def _build_alert_text(self, students: list[dict]) -> str:
-        drowsy = [student["name"] for student in students if student["status"] == "DROWSY"]
-        absent = [student["name"] for student in students if student["status"] == "ABSENT"]
+        drowsy = [
+            student["name"] for student in students if student["status"] == "DROWSY"
+        ]
+        absent = [
+            student["name"] for student in students if student["status"] == "ABSENT"
+        ]
         if drowsy:
             return f"졸음 감지: {', '.join(drowsy[:3])}"
         if absent:
             return f"자리 이탈 감지: {', '.join(absent[:3])}"
         if students:
             return f"총 {len(students)}명 분석 중"
-        return "감지된 학생이 없습니다."
+        return f"감지된 학생이 없습니다. {self.last_detection_debug}"
 
     def _build_report_text(self, students: list[dict]) -> str:
         lines = [
@@ -448,7 +489,11 @@ class MultiStudentEngine:
 
     def _build_debug_text(self, students: list[dict]) -> str:
         student_bits = [
-            f"id={student['id']}:{student['status']}/{student['reason'] or '-'}"
+            (
+                f"id={student['id']}:{student['status']}/{student['reason'] or '-'} "
+                f"box={student['bbox']} conf={student['conf']:.2f} "
+                f"miss={student['misses']}"
+            )
             for student in students
         ]
         return (
@@ -456,6 +501,86 @@ class MultiStudentEngine:
             f"tracked={len(students)} model={self.model_name}\n"
             + " | ".join(student_bits)
         ).strip()
+
+    def _render_overlay_frame(
+        self,
+        frame: np.ndarray,
+        detections: list[dict],
+        students: list[dict],
+    ) -> str:
+        """
+        현재 추론 프레임 위에 raw detection 과 tracked slot 을 함께 그립니다.
+
+        - raw detection: 얇은 파란 박스
+        - tracked slot: 상태 기반 두꺼운 박스
+        """
+        canvas = frame.copy()
+
+        for det_idx, det in enumerate(detections, start=1):
+            self._draw_raw_detection(canvas, det_idx, det)
+
+        for student in students:
+            self._draw_tracked_slot(canvas, student)
+
+        return encode_bgr_to_data_url(canvas)
+
+    def _draw_raw_detection(self, canvas: np.ndarray, det_idx: int, det: dict) -> None:
+        x1, y1, x2, y2 = [int(v) for v in det["box"]]
+        raw_color = (255, 0, 0)
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), raw_color, 1, cv2.LINE_AA)
+        label = f"DET{det_idx} {det.get('label', 'student')} {det.get('conf', 0.0):.2f}"
+        self._draw_label(canvas, label, (x1, max(18, y1 - 6)), raw_color)
+
+    def _draw_tracked_slot(self, canvas: np.ndarray, student: dict) -> None:
+        x1, y1, x2, y2 = [int(v) for v in student["bbox"]]
+        status = student.get("status") or "NORMAL"
+        slot_color = self._status_color(status)
+
+        # tracked slot 은 raw detection 보다 눈에 띄게 굵게 그립니다.
+        cv2.rectangle(canvas, (x1, y1), (x2, y2), slot_color, 3, cv2.LINE_AA)
+
+        label_parts = [
+            f"S{student['id']}",
+            status,
+            f"{student.get('conf', 0.0):.2f}",
+        ]
+        name = student.get("name") or ""
+        if name:
+            label_parts.append(name)
+        label = " | ".join(label_parts)
+        self._draw_label(canvas, label, (x1, min(canvas.shape[0] - 6, y2 + 18)), slot_color)
+
+    def _draw_label(self, canvas: np.ndarray, text: str, origin: tuple[int, int], color: tuple[int, int, int]) -> None:
+        try:
+            draw_text_bg(
+                canvas,
+                text=text,
+                org=origin,
+                scale=0.5,
+                color=(255, 255, 255),
+                bg=color,
+                thickness=1,
+                pad=3,
+            )
+        except Exception:
+            x, y = origin
+            cv2.putText(
+                canvas,
+                text,
+                (x, y),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.45,
+                color,
+                1,
+                cv2.LINE_AA,
+            )
+
+    def _status_color(self, status: str) -> tuple[int, int, int]:
+        if status == "DROWSY":
+            return (40, 40, 255)
+        if status == "ABSENT":
+            return (0, 215, 255)
+        return (60, 200, 60)
 
 
 LiveDrowsinessEngine = MultiStudentEngine

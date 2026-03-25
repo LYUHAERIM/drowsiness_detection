@@ -24,7 +24,7 @@ def build_stage_media_html(stage_media_url: str, stage_media_kind: str) -> str:
         """
 
     return f"""
-    <div id="stage-bg-image" style="background-image: url('{stage_media_url}');"></div>
+    <img id="stage-bg-image" src="{stage_media_url}" alt="stage background">
     """
 
 
@@ -45,10 +45,11 @@ def build_stage_html(stage_media_url: str, stage_media_kind: str) -> str:
             {stage_media_html}
             <div id="cam-placeholder">Start 버튼을 눌러 카메라를 켜세요.</div>
             <video id="student-cam" autoplay muted playsinline></video>
+            <img id="student-cam-overlay" alt="debug overlay frame">
         </div>
 
         <div id="stage-caption">
-            실제 강의 화면 위에 내 카메라만 3번째 학생 슬롯에 오버레이합니다.
+            실제 강의 화면 위에 내 카메라만 3번째 학생 슬롯에 오버레이합니다. 디버그 모드에서는 YOLO raw detection 과 tracked slot bbox 가 함께 표시됩니다.
         </div>
     </div>
     """

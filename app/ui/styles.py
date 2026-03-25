@@ -163,9 +163,8 @@ def build_css() -> str:
     }}
 
     #stage-bg-image {{
-        background-position: center;
-        background-repeat: no-repeat;
-        background-size: cover;
+        object-fit: cover;
+        background: #09090b;
     }}
 
     #student-cam,
@@ -187,6 +186,18 @@ def build_css() -> str:
         border: 3px solid rgba(34, 197, 94, 0.85);
         box-shadow: 0 18px 34px rgba(0, 0, 0, 0.34);
         z-index: 4;
+    }}
+
+    #student-cam-overlay {{
+        display: none;
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: transparent;
+        z-index: 6;
+        pointer-events: none;
     }}
 
     #cam-placeholder {{

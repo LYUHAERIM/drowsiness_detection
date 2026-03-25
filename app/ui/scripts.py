@@ -1,14 +1,22 @@
+from app.config import BG_H, BG_W
+
+
 def build_head_script() -> str:
     return """
     <script>
+    const STAGE_CAPTURE_WIDTH = __BG_W__;
+    const STAGE_CAPTURE_HEIGHT = __BG_H__;
+
     function overlayState() {
         if (!window.__overlayCameraState) {
             window.__overlayCameraState = {
                 intervalId: null,
+                renderIntervalId: null,
                 canvas: null,
                 nextSeq: 0,
                 inFlightSeq: 0,
                 inFlight: false,
+                lastRenderedDataUrl: "",
             };
         }
         return window.__overlayCameraState;
@@ -57,36 +65,110 @@ def build_head_script() -> str:
         clickHiddenButton("real-stop-btn");
     }
 
-    async function captureAndSubmitFrame() {
+    function getStageElements() {
+        return {
+            stage: document.getElementById("demo-stage"),
+            stageVideo: document.getElementById("stage-bg-video"),
+            stageImage: document.getElementById("stage-bg-image"),
+            studentVideo: document.getElementById("student-cam"),
+            overlayImg: document.getElementById("student-cam-overlay"),
+            placeholder: document.getElementById("cam-placeholder"),
+        };
+    }
+
+    function ensureStageCanvas(stageWidth, stageHeight) {
         const state = overlayState();
-        const video = document.getElementById("student-cam");
+        if (!state.canvas) {
+            state.canvas = document.createElement("canvas");
+        }
+        state.canvas.width = Math.max(1, Math.round(stageWidth));
+        state.canvas.height = Math.max(1, Math.round(stageHeight));
+        return state.canvas;
+    }
+
+    function drawCoverSource(ctx, source, destWidth, destHeight) {
+        const sourceWidth = source.videoWidth || source.naturalWidth || source.width || destWidth;
+        const sourceHeight = source.videoHeight || source.naturalHeight || source.height || destHeight;
+        if (!sourceWidth || !sourceHeight) return;
+
+        const scale = Math.max(destWidth / sourceWidth, destHeight / sourceHeight);
+        const drawWidth = sourceWidth * scale;
+        const drawHeight = sourceHeight * scale;
+        const dx = (destWidth - drawWidth) / 2;
+        const dy = (destHeight - drawHeight) / 2;
+        ctx.drawImage(source, dx, dy, drawWidth, drawHeight);
+    }
+
+    function drawElementIntoStage(ctx, source, stageRect, targetRect, mirror = false) {
+        const dx = ((targetRect.left - stageRect.left) / stageRect.width) * ctx.canvas.width;
+        const dy = ((targetRect.top - stageRect.top) / stageRect.height) * ctx.canvas.height;
+        const dw = (targetRect.width / stageRect.width) * ctx.canvas.width;
+        const dh = (targetRect.height / stageRect.height) * ctx.canvas.height;
+
+        if (mirror) {
+            ctx.save();
+            ctx.translate(dx + dw, dy);
+            ctx.scale(-1, 1);
+            ctx.drawImage(source, 0, 0, dw, dh);
+            ctx.restore();
+            return;
+        }
+
+        ctx.drawImage(source, dx, dy, dw, dh);
+    }
+
+    function composeStageFrame() {
+        const { stage, stageVideo, stageImage, studentVideo, overlayImg } = getStageElements();
+        if (!stage || !studentVideo) return null;
+        if (!studentVideo.srcObject || studentVideo.readyState < 2) return null;
+
+        const stageRect = stage.getBoundingClientRect();
+        if (!stageRect.width || !stageRect.height) return null;
+
+        const canvas = ensureStageCanvas(STAGE_CAPTURE_WIDTH, STAGE_CAPTURE_HEIGHT);
+        const ctx = canvas.getContext("2d", { willReadFrequently: false });
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 1. 사용자가 보는 온라인 강의 배경을 stage 전체에 먼저 합성합니다.
+        if (stageVideo && stageVideo.readyState >= 2) {
+            drawCoverSource(ctx, stageVideo, canvas.width, canvas.height);
+        } else if (stageImage && stageImage.complete) {
+            drawCoverSource(ctx, stageImage, canvas.width, canvas.height);
+        } else {
+            ctx.fillStyle = "#09090b";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        }
+
+        // 2. 내 웹캠 오버레이를 실제 stage 상의 슬롯 위치에 그대로 합성합니다.
+        const studentRect = studentVideo.getBoundingClientRect();
+        drawElementIntoStage(ctx, studentVideo, stageRect, studentRect, true);
+
+        // 3. 디버그 bbox 는 백엔드가 stage 좌표계로 다시 그려서 반환하므로 입력 합성 단계에서는 제외합니다.
+        void overlayImg;
+
+        return canvas;
+    }
+
+    function captureStageToDataUrl() {
+        const canvas = composeStageFrame();
+        if (!canvas) return "";
+        return canvas.toDataURL("image/jpeg", 0.88);
+    }
+
+    function sendComposedStageFrame() {
+        const state = overlayState();
         const frameInput = queryBridgeInput("frame-data-input");
         const seqInput = queryBridgeInput("frame-seq-input");
         const submitBtn = queryBridgeButton("frame-submit-btn");
-
-        if (!video || !frameInput || !seqInput || !submitBtn) return;
-        if (!video.srcObject || video.readyState < 2) return;
+        if (!frameInput || !seqInput || !submitBtn) return;
 
         if (state.inFlight && currentAck() >= state.inFlightSeq) {
             state.inFlight = false;
         }
         if (state.inFlight) return;
 
-        const width = Math.min(video.videoWidth || 640, 640);
-        const height = Math.max(
-            1,
-            Math.round(width * ((video.videoHeight || 480) / (video.videoWidth || 640)))
-        );
-
-        if (!state.canvas) {
-            state.canvas = document.createElement("canvas");
-        }
-        state.canvas.width = width;
-        state.canvas.height = height;
-
-        const ctx = state.canvas.getContext("2d", { willReadFrequently: false });
-        ctx.drawImage(video, 0, 0, width, height);
-        const dataUrl = state.canvas.toDataURL("image/jpeg", 0.82);
+        const dataUrl = captureStageToDataUrl();
+        if (!dataUrl) return;
 
         const nextSeq = currentAck() + 1;
         state.nextSeq = nextSeq;
@@ -104,10 +186,33 @@ def build_head_script() -> str:
         submitBtn.click();
     }
 
+    function syncRenderedFrame() {
+        const state = overlayState();
+        const overlayInput = queryBridgeInput("overlay-frame-output");
+        const { overlayImg } = getStageElements();
+        if (!overlayInput || !overlayImg) return;
+
+        const nextDataUrl = overlayInput.value || "";
+        if (!nextDataUrl) {
+            if (state.lastRenderedDataUrl) {
+                overlayImg.removeAttribute("src");
+                overlayImg.style.display = "none";
+                state.lastRenderedDataUrl = "";
+            }
+            return;
+        }
+
+        if (state.lastRenderedDataUrl === nextDataUrl) return;
+
+        overlayImg.src = nextDataUrl;
+        overlayImg.style.display = "block";
+        state.lastRenderedDataUrl = nextDataUrl;
+    }
+
     async function startOverlayCamera() {
         const state = overlayState();
-        const video = document.getElementById("student-cam");
-        const placeholder = document.getElementById("cam-placeholder");
+        const { studentVideo, placeholder } = getStageElements();
+        const video = studentVideo;
         if (!video) return;
 
         try {
@@ -132,12 +237,21 @@ def build_head_script() -> str:
             if (state.intervalId) {
                 window.clearInterval(state.intervalId);
             }
+            if (state.renderIntervalId) {
+                window.clearInterval(state.renderIntervalId);
+            }
 
             state.intervalId = window.setInterval(() => {
-                captureAndSubmitFrame().catch((err) => {
+                try {
+                    sendComposedStageFrame();
+                } catch (err) {
                     console.error("프레임 전송 실패:", err);
-                });
+                }
             }, 220);
+
+            state.renderIntervalId = window.setInterval(() => {
+                syncRenderedFrame();
+            }, 120);
 
             if (placeholder) {
                 placeholder.style.display = "none";
@@ -153,16 +267,21 @@ def build_head_script() -> str:
 
     function stopOverlayCamera() {
         const state = overlayState();
-        const video = document.getElementById("student-cam");
-        const placeholder = document.getElementById("cam-placeholder");
+        const { studentVideo, placeholder, overlayImg } = getStageElements();
+        const video = studentVideo;
         if (!video) return;
 
         if (state.intervalId) {
             window.clearInterval(state.intervalId);
             state.intervalId = null;
         }
+        if (state.renderIntervalId) {
+            window.clearInterval(state.renderIntervalId);
+            state.renderIntervalId = null;
+        }
         state.inFlight = false;
         state.inFlightSeq = 0;
+        state.lastRenderedDataUrl = "";
 
         const stream = video.srcObject;
         if (stream) {
@@ -172,10 +291,15 @@ def build_head_script() -> str:
         video.pause();
         video.srcObject = null;
 
+        if (overlayImg) {
+            overlayImg.removeAttribute("src");
+            overlayImg.style.display = "none";
+        }
+
         if (placeholder) {
             placeholder.innerText = "Start 버튼을 눌러 카메라를 켜세요.";
             placeholder.style.display = "flex";
         }
     }
     </script>
-    """
+    """.replace("__BG_W__", str(BG_W)).replace("__BG_H__", str(BG_H))

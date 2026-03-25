@@ -22,6 +22,7 @@ class RuntimeSnapshot:
     frame_received: bool
     frame_index: int
     students: list[dict]
+    overlay_data_url: str
     running: bool
 
 class LiveInferenceRuntime:
@@ -37,6 +38,7 @@ class LiveInferenceRuntime:
             frame_received=False,
             frame_index=0,
             students=[],
+            overlay_data_url="",
             running=False,
         )
 
@@ -54,6 +56,7 @@ class LiveInferenceRuntime:
                 frame_received=False,
                 frame_index=0,
                 students=[],
+                overlay_data_url="",
                 running=True,
             )
             return self._last_snapshot
@@ -74,6 +77,7 @@ class LiveInferenceRuntime:
                 frame_received=self._last_snapshot.frame_received,
                 frame_index=self._last_snapshot.frame_index,
                 students=self._last_snapshot.students,
+                overlay_data_url=self._last_snapshot.overlay_data_url,
                 running=False,
             )
             return self._last_snapshot
@@ -104,6 +108,7 @@ class LiveInferenceRuntime:
                     frame_received=result.frame_received,
                     frame_index=result.frame_index,
                     students=result.students,
+                    overlay_data_url=result.overlay_data_url,
                     running=True,
                 )
                 return self._last_snapshot
@@ -118,6 +123,7 @@ class LiveInferenceRuntime:
                     frame_received=bool(data_url),
                     frame_index=ENGINE.frame_count,
                     students=self._last_snapshot.students,
+                    overlay_data_url=self._last_snapshot.overlay_data_url,
                     running=True,
                 )
                 return self._last_snapshot

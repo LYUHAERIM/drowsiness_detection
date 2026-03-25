@@ -110,6 +110,12 @@ def create_demo() -> gr.Blocks:
             elem_id="frame-ack-output",
             elem_classes=["bridge-hidden"],
         )
+        overlay_frame_box = gr.Textbox(
+            value="",
+            label="overlay-frame",
+            elem_id="overlay-frame-output",
+            elem_classes=["bridge-hidden"],
+        )
         frame_submit_btn = gr.Button(
             "submit-frame",
             elem_id="frame-submit-btn",
@@ -126,6 +132,7 @@ def create_demo() -> gr.Blocks:
                 panel_html,
                 debug_box,
                 frame_ack_box,
+                overlay_frame_box,
             ],
             queue=False,
             show_progress="hidden",
@@ -141,6 +148,7 @@ def create_demo() -> gr.Blocks:
                 panel_html,
                 debug_box,
                 frame_ack_box,
+                overlay_frame_box,
             ],
             js="() => { startOverlayCamera(); }",
         )
@@ -156,6 +164,7 @@ def create_demo() -> gr.Blocks:
                 panel_html,
                 debug_box,
                 frame_ack_box,
+                overlay_frame_box,
             ],
             js="() => { stopOverlayCamera(); }",
         )

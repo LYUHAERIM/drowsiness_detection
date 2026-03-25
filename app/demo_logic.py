@@ -742,6 +742,7 @@ def _render_outputs(snapshot: RuntimeSnapshot, ack: int):
         panel_html,
         _debug_text(snapshot),
         ack,
+        snapshot.overlay_data_url,
     )
 
 
@@ -763,6 +764,7 @@ def on_start():
         ),
         _debug_text(snapshot),
         0,
+        snapshot.overlay_data_url,
     )
 
 
@@ -783,6 +785,7 @@ def on_stop(frame_ack: int):
         ),
         _debug_text(snapshot),
         frame_ack,
+        "",
     )
 
 
