@@ -109,13 +109,27 @@ class VideoReader:
         frame_idx = self._start_frame
 
         while frame_idx < self._end_frame:
-            ret, frame = self._cap.read()
-            if not ret:
-                break
             if (frame_idx - self._start_frame) % self._stride == 0:
+                # 사용할 프레임: 풀 디코딩
+                ret, frame = self._cap.read()
+                if not ret:
+                    break
                 ts = frame_idx / max(fps, 1e-6)
                 yield frame_idx, ts, frame
+            else:
+                # 스킵할 프레임: 포인터만 이동 (디코딩 없음)
+                if not self._cap.grab():
+                    break
             frame_idx += 1
+
+            # [기존 코드] stride 관계없이 매 프레임 풀 디코딩
+            # ret, frame = self._cap.read()
+            # if not ret:
+            #     break
+            # if (frame_idx - self._start_frame) % self._stride == 0:
+            #     ts = frame_idx / max(fps, 1e-6)
+            #     yield frame_idx, ts, frame
+            # frame_idx += 1
 
     def __len__(self) -> int:
         """예상 출력 프레임 수."""

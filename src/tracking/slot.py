@@ -7,7 +7,7 @@ Zoom 썸네일 레이아웃에서 YOLO 탐지 결과를 슬롯에 매칭하고
 import math
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
@@ -74,6 +74,9 @@ class SlotState:
     # ── bbox 안정화 ───────────────────────────────────────────────────────────
     box_smoothed: Optional[list] = None
     prev_gray: Optional[np.ndarray] = None
+
+    # ── 슬롯별 FaceMesh 인스턴스 (병렬화용) ──────────────────────────────────
+    face_detector: Any = field(default=None, repr=False)
 
     # ── 통계 ──────────────────────────────────────────────────────────────────
     total_frames: int = 0
