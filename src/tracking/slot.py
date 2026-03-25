@@ -67,6 +67,7 @@ class SlotState:
 
     # ── NoFace 연속 카운터 ────────────────────────────────────────────────────
     noface_consec: int = 0          # 연속 얼굴 미검출 프레임 수
+    last_drowsy_ts: float = -1.0    # 마지막 DROWSY 감지 타임스탬프 (초)
 
     # ── Wakeup 감지 ───────────────────────────────────────────────────────────
     wake_motion_frames: int = 0     # 연속 큰 움직임 프레임 수 (wakeup 감지용)
