@@ -1,7 +1,10 @@
 from pathlib import Path
 
+from app.inference.live_engine import get_device_summary
 from app.ui.build import create_demo
 
+
+print(f"[gradio_app] Starting demo on {get_device_summary()}")
 
 demo = create_demo()
 

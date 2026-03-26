@@ -5,6 +5,7 @@ import logging
 from pathlib import Path
 from typing import Any
 from dotenv import load_dotenv
+import yaml
 
 logger = logging.getLogger(__name__)
 

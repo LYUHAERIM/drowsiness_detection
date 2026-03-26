@@ -8,9 +8,9 @@ from typing import Optional
 
 import cv2
 import numpy as np
-import torch
 from ultralytics import YOLO
 
+from app.inference.device import get_device_summary, select_device
 from scripts.infer_video import PipelineConfig, ZoomPipeline
 
 
@@ -53,18 +53,6 @@ def decode_data_url_to_bgr(data_url: str) -> Optional[np.ndarray]:
         return None
 
 
-def _select_device() -> int | str:
-    if torch.cuda.is_available():
-        return 0
-    try:
-        mps_available = getattr(getattr(torch, "backends", None), "mps", None)
-        if mps_available is not None and mps_available.is_available():
-            return "mps"
-    except Exception:
-        pass
-    return "cpu"
-
-
 class LiveZoomEngine:
     """ZoomPipeline을 실시간 Gradio 추론에 사용하는 엔진."""
 
@@ -72,13 +60,25 @@ class LiveZoomEngine:
         self.fps = fps
         self._checkpoint_path = str(checkpoint_path)
 
-        device = _select_device()
+        self.device = select_device(prefer_mps=True)
+        print(f"[LiveZoomEngine] checkpoint={self._checkpoint_path}")
+        print(f"[LiveZoomEngine] selected_device={get_device_summary(self.device)}")
+
         self._model = YOLO(self._checkpoint_path)
-        self._model.to(device if isinstance(device, str) else f"cuda:{device}")
+
+        try:
+            self._model.to(self.device)
+            print(f"[LiveZoomEngine] 모델을 {self.device}에 로딩했습니다")
+        except Exception as exc:
+            print(f"[LiveZoomEngine] 모델 로딩 중 오류: {exc}")
+            if self.device != "cpu":
+                print("[LiveZoomEngine] CPU로 폴백합니다")
+                self.device = "cpu"
+                self._model.to(self.device)
 
         self._config = PipelineConfig(
             target_fps=fps,
-            device=device,
+            device=self.device,
         )
         self._pipeline: Optional[ZoomPipeline] = None
         self._open_pipeline()

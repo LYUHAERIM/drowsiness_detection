@@ -34,6 +34,7 @@ import torch
 from ultralytics import YOLO
 from tqdm import tqdm
 
+from app.inference.device import get_device_summary, is_gpu_device, select_device
 from src.detection.drowsiness import (
     DrowsinessConfig,
     _reset_timers,
@@ -140,9 +141,7 @@ class PipelineConfig:
     info_box_w: int = 340
 
     # 디바이스
-    device: int | str = field(
-        default_factory=lambda: 0 if torch.cuda.is_available() else "cpu"
-    )
+    device: str = field(default_factory=select_device)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -203,7 +202,7 @@ class ZoomPipeline:
             )
         self._ocr = NameOCR(
             teacher_names=cfg.teacher_names,
-            gpu=isinstance(cfg.device, int),
+            gpu=is_gpu_device(cfg.device),
         )
         return self
 
@@ -679,15 +678,9 @@ def run_inference(
     
     assert Path(input_path).exists(), f"입력 영상 없음: {input_path}"
 
-    # device 자동 감지: cuda > mps > cpu 순
-    if device is None:
-        import torch
-        if torch.cuda.is_available():
-            device = "cuda"
-        elif torch.backends.mps.is_available():
-            device = "mps"
-        else:
-            device = "cpu"
+    selected_device = device or select_device(prefer_mps=True)
+    print(f"[device] selected={get_device_summary(selected_device)}")
+
     if yolo_model is None:
         if use_onnx:
             load_path = str(onnx_path) if onnx_path else str(checkpoint).replace(".pt", ".onnx")
@@ -695,8 +688,16 @@ def run_inference(
             print(f"[device] cpu (ONNX Runtime)")
         else:
             yolo_model = YOLO(checkpoint_str)
-            yolo_model.to(device)
-            print(f"[device] {device}")
+            try:
+                yolo_model.to(selected_device)
+            except Exception as exc:
+                if selected_device != "cpu":
+                    print(f"[device] {selected_device} 로딩 실패, cpu로 폴백합니다: {exc}")
+                    selected_device = "cpu"
+                    yolo_model.to(selected_device)
+                else:
+                    raise
+            print(f"[device] active={get_device_summary(selected_device)}")
 
     config = PipelineConfig(
         teacher_names=teacher_names or ["강경미"],
@@ -704,6 +705,7 @@ def run_inference(
         use_pose_fallback=use_fallback,
         start_sec=start_sec,
         end_sec=end_sec,
+        device=selected_device,
         drowsiness=DrowsinessConfig(
             ear_hold_strong_sec=0.5,
         ),
@@ -757,11 +759,12 @@ def run_inference(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="졸음 감지 파이프라인 실행")
-    parser.add_argument("--checkpoint", type=str, default="checkpoint/yolo11n/best.pt", help="YOLO 모델 경로")
+    parser.add_argument("--checkpoint", type=str, default="checkpoint/yolo11n/weights/best.pt", help="YOLO 모델 경로")
     parser.add_argument("--input", type=str, required=True, help="입력 영상 경로")
     parser.add_argument("--output", type=str, default="outputs/result.mp4", help="결과 영상 저장 경로")
     parser.add_argument("--fps", type=float, default=7.0, help="분석 목표 FPS")
     parser.add_argument("--use_fallback", action="store_true", help="Pose fallback 활성화 여부")
+    parser.add_argument("--device", type=str, default=None, help="예: cuda:0, cpu, mps")
     parser.add_argument("--teacher", type=str, default="강경미", help="강사 이름 (쉼표로 구분)")
 
     args = parser.parse_args()
@@ -772,5 +775,6 @@ if __name__ == "__main__":
         output_path=args.output,
         fps=args.fps,
         use_fallback=args.use_fallback,
+        device=args.device,
         teacher_names=args.teacher.split(","),
     )
