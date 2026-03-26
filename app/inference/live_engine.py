@@ -2,7 +2,7 @@ import base64
 import logging
 import os
 import time
-from collections import Counter
+from collections import Counter, deque
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -96,10 +96,16 @@ class MultiStudentEngine:
     def __init__(self, fps: float = 5.0):
         self.fps = fps
         self.cfg = DrowsinessConfig()
-        self.max_students = 5
-        self.detect_interval = 3
-        self.ocr_interval = 15
+        self.max_students = int(os.getenv("MAX_TRACKED_STUDENTS", "5"))
+        self.detect_interval = int(os.getenv("DETECT_EVERY_N_FRAMES", "5"))
+        self.facemesh_interval = int(os.getenv("FACEMESH_EVERY_N_FRAMES", "3"))
+        self.ocr_interval = int(os.getenv("OCR_EVERY_N_FRAMES", "90"))
         self.max_slot_misses = max(3, int(round(fps * 2.0)))
+        self.overlay_every_n_frames = int(os.getenv("OVERLAY_EVERY_N_FRAMES", "3"))
+        self.overlay_enabled = os.getenv("OVERLAY_DEBUG_ENABLED", "1") != "0"
+        self.overlay_max_width = int(os.getenv("OVERLAY_MAX_WIDTH", "960"))
+        self.overlay_jpeg_quality = int(os.getenv("OVERLAY_JPEG_QUALITY", "68"))
+        self.timing_window = int(os.getenv("TIMING_WINDOW_SIZE", "30"))
         self.model_name = os.getenv(
             "DROWSINESS_YOLO_MODEL", "checkpoint/yolo11n/weights/best.pt"
         )
@@ -117,7 +123,12 @@ class MultiStudentEngine:
         self.last_reason = "init"
         self.last_detection_debug = "detect=waiting"
         self.last_detections: list[dict] = []
+        self.last_overlay_data_url = ""
         self.slots: dict[int, SlotState] = {}
+        self.timing_history = {
+            key: deque(maxlen=self.timing_window)
+            for key in ["decode", "yolo", "tracking", "facemesh", "ocr", "overlay", "total"]
+        }
 
     def _build_name_reader(self) -> Optional[NameOCR]:
         try:
@@ -145,7 +156,10 @@ class MultiStudentEngine:
         self.last_reason = "reset"
         self.last_detection_debug = "detect=reset"
         self.last_detections = []
+        self.last_overlay_data_url = ""
         self.slots = {}
+        for hist in self.timing_history.values():
+            hist.clear()
 
     def close(self):
         if self.face_detector is not None:
@@ -170,10 +184,13 @@ class MultiStudentEngine:
             self.yolo_model = self._build_yolo_model()
 
     def analyze_data_url(self, data_url: str) -> LiveInferenceResult:
+        decode_started = time.perf_counter()
         frame = decode_data_url_to_bgr(data_url)
+        self._record_timing("decode", (time.perf_counter() - decode_started) * 1000.0)
         return self.analyze_bgr(frame)
 
     def analyze_bgr(self, frame: Optional[np.ndarray]) -> LiveInferenceResult:
+        total_started = time.perf_counter()
         if frame is None:
             return LiveInferenceResult(
                 status="NORMAL",
@@ -191,20 +208,35 @@ class MultiStudentEngine:
         self._ensure_runtime_components()
         ts = time.time() - self.started_at
 
+        yolo_started = time.perf_counter()
         detections = self._get_detections(frame)
+        self._record_timing("yolo", (time.perf_counter() - yolo_started) * 1000.0)
+
+        tracking_started = time.perf_counter()
         self._update_slots(frame, detections)
+        self._record_timing("tracking", (time.perf_counter() - tracking_started) * 1000.0)
 
         student_rows: list[dict] = []
+        facemesh_ms = 0.0
+        ocr_ms = 0.0
         for slot_id in list(self.slots.keys()):
             slot = self.slots[slot_id]
-            student_rows.append(self._run_slot_inference(frame, slot, ts))
+            student_row, slot_facemesh_ms, slot_ocr_ms = self._run_slot_inference(frame, slot, ts)
+            facemesh_ms += slot_facemesh_ms
+            ocr_ms += slot_ocr_ms
+            student_rows.append(student_row)
+        self._record_timing("facemesh", facemesh_ms)
+        self._record_timing("ocr", ocr_ms)
 
         student_rows.sort(key=lambda row: row["id"])
         summary_status = self._summarize_status(student_rows)
         alert = self._build_alert_text(student_rows)
         report = self._build_report_text(student_rows)
         debug_text = self._build_debug_text(student_rows)
+        overlay_started = time.perf_counter()
         overlay_data_url = self._render_overlay_frame(frame, detections, student_rows)
+        self._record_timing("overlay", (time.perf_counter() - overlay_started) * 1000.0)
+        self._record_timing("total", (time.perf_counter() - total_started) * 1000.0)
 
         return LiveInferenceResult(
             status=summary_status,
@@ -335,7 +367,9 @@ class MultiStudentEngine:
 
     def _run_slot_inference(
         self, frame: np.ndarray, slot: SlotState, ts: float
-    ) -> dict:
+    ) -> tuple[dict, float, float]:
+        facemesh_ms = 0.0
+        ocr_ms = 0.0
         crop = self._crop_bbox(frame, slot.box)
         if crop is None:
             slot.class_name = "person_off"
@@ -350,10 +384,17 @@ class MultiStudentEngine:
             )
             self.last_reason = reason
             self._update_slot_stats(slot, final_state)
-            return self._student_row(slot, raw_state, final_state, reason)
+            return self._student_row(slot, raw_state, final_state, reason), facemesh_ms, ocr_ms
 
         cls_name = slot.class_name if slot.misses == 0 else "person_off"
-        face_result = self.face_detector.detect(crop, cls_name=cls_name)
+        face_result = slot.last_face_result or _empty_face_result()
+        should_run_facemesh = self._should_run_facemesh(slot, cls_name)
+        if should_run_facemesh:
+            facemesh_started = time.perf_counter()
+            face_result = self.face_detector.detect(crop, cls_name=cls_name)
+            facemesh_ms = (time.perf_counter() - facemesh_started) * 1000.0
+            slot.last_face_result = face_result
+            slot.last_face_frame = self.frame_count
 
         gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
         motion = compute_motion(
@@ -363,6 +404,7 @@ class MultiStudentEngine:
             thumb_shape=gray.shape,
         )
         slot.prev_gray = gray
+        slot.last_motion = motion
 
         raw_state, final_state, reason = update_drowsiness_state(
             slot=slot,
@@ -375,19 +417,20 @@ class MultiStudentEngine:
         )
         self.last_reason = reason
 
-        update_baselines(
-            slot=slot,
-            face_result=face_result,
-            final_state=final_state,
-            ts=ts,
-            cfg=self.cfg,
-        )
+        if should_run_facemesh:
+            update_baselines(
+                slot=slot,
+                face_result=face_result,
+                final_state=final_state,
+                ts=ts,
+                cfg=self.cfg,
+            )
 
         if cls_name == "person_on":
-            self._maybe_update_name(slot, crop)
+            ocr_ms = self._maybe_update_name(slot, crop)
 
         self._update_slot_stats(slot, final_state)
-        return self._student_row(slot, raw_state, final_state, reason)
+        return self._student_row(slot, raw_state, final_state, reason), facemesh_ms, ocr_ms
 
     def _crop_bbox(self, frame: np.ndarray, box: tuple) -> Optional[np.ndarray]:
         h, w = frame.shape[:2]
@@ -400,25 +443,28 @@ class MultiStudentEngine:
             return None
         return frame[y1:y2, x1:x2].copy()
 
-    def _maybe_update_name(self, slot: SlotState, crop: np.ndarray) -> None:
+    def _maybe_update_name(self, slot: SlotState, crop: np.ndarray) -> float:
         if self.name_reader is None:
-            return
+            return 0.0
         should_run_ocr = (
             not slot.name_final
             or self.frame_count - slot.last_ocr_frame >= self.ocr_interval
         )
+        if slot.name_final and slot.name_conf >= 0.9:
+            should_run_ocr = False
         if not should_run_ocr:
-            return
+            return 0.0
 
         slot.last_ocr_frame = self.frame_count
+        ocr_started = time.perf_counter()
         try:
             name, conf = self.name_reader.read_name(crop)
         except Exception:
             LOGGER.exception("OCR failed for slot %s", slot.slot_id)
-            return
+            return (time.perf_counter() - ocr_started) * 1000.0
 
         if not name:
-            return
+            return (time.perf_counter() - ocr_started) * 1000.0
 
         slot.name_votes.append(name)
         recent_votes = slot.name_votes[-10:]
@@ -426,6 +472,7 @@ class MultiStudentEngine:
         slot.name_final = best_name
         slot.name_conf = max(slot.name_conf, conf, votes / max(len(recent_votes), 1))
         slot.is_teacher = self.name_reader.is_teacher(best_name)
+        return (time.perf_counter() - ocr_started) * 1000.0
 
     def _update_slot_stats(self, slot: SlotState, final_state: str) -> None:
         slot.total_frames += 1
@@ -435,6 +482,39 @@ class MultiStudentEngine:
             slot.frames_drowsy += 1
         elif final_state == "ABSENT":
             slot.frames_absent += 1
+
+    def _should_run_facemesh(self, slot: SlotState, cls_name: str) -> bool:
+        if cls_name != "person_on":
+            return False
+        if slot.last_face_result is None:
+            return True
+
+        # 최근 이상 징후가 있거나 비정상 상태인 슬롯은 매 프레임 우선 분석합니다.
+        suspicious = any(
+            [
+                slot.current_state in {"DROWSY", "YAWN"},
+                slot.ear_low_frames > 0,
+                slot.pitch_high_frames > 0,
+                slot.tilt_high_frames > 0,
+                slot.mar_high_frames > 0,
+                slot.face_low_frames > 0,
+            ]
+        )
+        if suspicious:
+            return True
+
+        # 정상 슬롯은 slot id 기준 교차 샘플링으로 FaceMesh 호출을 분산합니다.
+        return (self.frame_count + slot.slot_id) % max(1, self.facemesh_interval) == 0
+
+    def _record_timing(self, key: str, elapsed_ms: float) -> None:
+        if key in self.timing_history:
+            self.timing_history[key].append(float(elapsed_ms))
+
+    def _avg_timing(self, key: str) -> float:
+        values = self.timing_history.get(key)
+        if not values:
+            return 0.0
+        return float(sum(values) / len(values))
 
     def _student_row(
         self, slot: SlotState, raw_state: str, final_state: str, reason: str
@@ -496,9 +576,22 @@ class MultiStudentEngine:
             )
             for student in students
         ]
+        timing_line = (
+            "avg_ms "
+            f"decode={self._avg_timing('decode'):.1f} "
+            f"yolo={self._avg_timing('yolo'):.1f} "
+            f"track={self._avg_timing('tracking'):.1f} "
+            f"face={self._avg_timing('facemesh'):.1f} "
+            f"ocr={self._avg_timing('ocr'):.1f} "
+            f"overlay={self._avg_timing('overlay'):.1f} "
+            f"total={self._avg_timing('total'):.1f}"
+        )
         return (
             f"{self.last_detection_debug} slots={len(self.slots)} "
-            f"tracked={len(students)} model={self.model_name}\n"
+            f"tracked={len(students)} model={self.model_name} "
+            f"detect_every={self.detect_interval} face_every={self.facemesh_interval} "
+            f"overlay_every={self.overlay_every_n_frames}\n"
+            f"{timing_line}\n"
             + " | ".join(student_bits)
         ).strip()
 
@@ -514,6 +607,14 @@ class MultiStudentEngine:
         - raw detection: 얇은 파란 박스
         - tracked slot: 상태 기반 두꺼운 박스
         """
+        if not self.overlay_enabled:
+            return self.last_overlay_data_url
+        if (
+            self.last_overlay_data_url
+            and self.frame_count % max(1, self.overlay_every_n_frames) != 0
+        ):
+            return self.last_overlay_data_url
+
         canvas = frame.copy()
 
         for det_idx, det in enumerate(detections, start=1):
@@ -522,7 +623,22 @@ class MultiStudentEngine:
         for student in students:
             self._draw_tracked_slot(canvas, student)
 
-        return encode_bgr_to_data_url(canvas)
+        h, w = canvas.shape[:2]
+        if w > self.overlay_max_width:
+            scale = self.overlay_max_width / float(w)
+            canvas = cv2.resize(
+                canvas,
+                None,
+                fx=scale,
+                fy=scale,
+                interpolation=cv2.INTER_AREA,
+            )
+
+        self.last_overlay_data_url = encode_bgr_to_data_url(
+            canvas,
+            quality=self.overlay_jpeg_quality,
+        )
+        return self.last_overlay_data_url
 
     def _draw_raw_detection(self, canvas: np.ndarray, det_idx: int, det: dict) -> None:
         x1, y1, x2, y2 = [int(v) for v in det["box"]]
@@ -544,9 +660,6 @@ class MultiStudentEngine:
             status,
             f"{student.get('conf', 0.0):.2f}",
         ]
-        name = student.get("name") or ""
-        if name:
-            label_parts.append(name)
         label = " | ".join(label_parts)
         self._draw_label(canvas, label, (x1, min(canvas.shape[0] - 6, y2 + 18)), slot_color)
 

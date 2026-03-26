@@ -6,6 +6,8 @@ def build_head_script() -> str:
     <script>
     const STAGE_CAPTURE_WIDTH = __BG_W__;
     const STAGE_CAPTURE_HEIGHT = __BG_H__;
+    const FRAME_SEND_INTERVAL_MS = 320;
+    const FRAME_JPEG_QUALITY = 0.78;
 
     function overlayState() {
         if (!window.__overlayCameraState) {
@@ -152,7 +154,7 @@ def build_head_script() -> str:
     function captureStageToDataUrl() {
         const canvas = composeStageFrame();
         if (!canvas) return "";
-        return canvas.toDataURL("image/jpeg", 0.88);
+        return canvas.toDataURL("image/jpeg", FRAME_JPEG_QUALITY);
     }
 
     function sendComposedStageFrame() {
@@ -247,7 +249,7 @@ def build_head_script() -> str:
                 } catch (err) {
                     console.error("프레임 전송 실패:", err);
                 }
-            }, 220);
+            }, FRAME_SEND_INTERVAL_MS);
 
             state.renderIntervalId = window.setInterval(() => {
                 syncRenderedFrame();

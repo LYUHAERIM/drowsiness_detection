@@ -75,6 +75,9 @@ class SlotState:
     # ── bbox 안정화 ───────────────────────────────────────────────────────────
     box_smoothed: Optional[list] = None
     prev_gray: Optional[np.ndarray] = None
+    last_face_result: Any = field(default=None, repr=False)
+    last_face_frame: int = -10000
+    last_motion: float = 0.0
 
     # ── 슬롯별 FaceMesh 인스턴스 (병렬화용) ──────────────────────────────────
     face_detector: Any = field(default=None, repr=False)
