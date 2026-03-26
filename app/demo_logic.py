@@ -5,9 +5,13 @@ import json
 import time
 from copy import deepcopy
 from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
+import gradio as gr
+
 from app.inference.runtime import RUNTIME, RuntimeSnapshot
+from app.ui.templates import build_report_shell_html
 
 Status = str
 
@@ -25,6 +29,13 @@ PANEL_STATE: dict = {
     "prev_statuses": {},        # slot_id -> 이전 상태
     "last_alert_time": {},      # name -> 마지막 알림 시각 (스팸 방지)
     "alerts": [],
+}
+
+UPLOAD_ANALYSIS_STATE: dict = {
+    "video_name": None,
+    "class_start_time": None,
+    "completed_at": None,
+    "summary": "아직 업로드 분석이 실행되지 않았습니다.",
 }
 
 
@@ -147,6 +158,15 @@ def _alert_color(alert_type: str) -> tuple[str, str]:
     if alert_type == "ABSENT":
         return ("rgba(239, 68, 68, 0.05)", "rgba(239, 68, 68, 0.30)")
     return ("rgba(16, 185, 129, 0.05)", "rgba(16, 185, 129, 0.30)")
+
+
+def _view_updates(active: str):
+    return (
+        gr.update(visible=active == "home"),
+        gr.update(visible=active == "live"),
+        gr.update(visible=active == "upload"),
+        gr.update(visible=active == "report"),
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -400,6 +420,178 @@ def _report_text() -> str:
         pct = round((stat["normal"] / total) * 100) if total > 0 else 0
         lines.append(f"{stat['name']}: {pct}% 정상")
     return "\n".join(lines)
+
+
+def _live_report_html() -> str:
+    stats = PANEL_STATE["slot_stats"]
+    alerts = deepcopy(PANEL_STATE["alerts"])
+    student_count = len(stats)
+    total_frames = sum(
+        stat["normal"] + stat["drowsy"] + stat["absent"] + stat["yawn"]
+        for stat in stats.values()
+    )
+    normal_frames = sum(stat["normal"] for stat in stats.values())
+    drowsy_events = sum(stat["drowsy"] for stat in stats.values())
+    absent_events = sum(stat["absent"] for stat in stats.values())
+    focus_rate = round((normal_frames / total_frames) * 100) if total_frames > 0 else 0
+
+    summary_rows = [
+        ("총 참여자", f"{student_count}명"),
+        ("평균 집중도", f"{focus_rate}%"),
+        ("졸음 감지", f"{drowsy_events}회"),
+        ("이탈 감지", f"{absent_events}회"),
+    ]
+    summary_html = "".join(
+        f"""
+        <div class="report-stat-card">
+            <div class="report-stat-label">{label}</div>
+            <div class="report-stat-value">{value}</div>
+        </div>
+        """
+        for label, value in summary_rows
+    )
+
+    if stats:
+        participant_items = []
+        for _, stat in sorted(stats.items()):
+            total = stat["normal"] + stat["drowsy"] + stat["absent"] + stat["yawn"]
+            normal_pct = round((stat["normal"] / total) * 100) if total > 0 else 0
+            participant_items.append(
+                f"<li>{html.escape(stat['name'])}: 정상 {normal_pct}%, 졸음 {stat['drowsy']}회, 이탈 {stat['absent']}회, 하품 {stat['yawn']}회</li>"
+            )
+        participant_html = f'<ul class="report-list">{"".join(participant_items)}</ul>'
+    else:
+        participant_html = '<div class="report-empty">아직 누적된 실시간 분석 데이터가 없습니다.</div>'
+
+    if alerts:
+        event_html = "".join(
+            f"""
+            <div class="report-event">
+                <div class="report-event-title">{html.escape(alert['message'])}</div>
+                <div class="report-event-meta">{html.escape(_format_time(alert['timestamp']))}</div>
+            </div>
+            """
+            for alert in alerts[:8]
+        )
+    else:
+        event_html = '<div class="report-empty">기록된 알림이 없습니다.</div>'
+
+    return f"""
+    <div class="report-summary-grid">
+        {summary_html}
+    </div>
+    <div class="report-block">
+        <div class="report-block-title">실시간 요약</div>
+        <div class="report-block-text">
+            분석 시간 {_format_duration(_elapsed_sec())} 동안 누적된 실시간 상태를 정리했습니다.
+            최신 상태는 {_latest_alert_text()}
+        </div>
+    </div>
+    <div class="report-block">
+        <div class="report-block-title">참여자별 통계</div>
+        {participant_html}
+    </div>
+    <div class="report-block">
+        <div class="report-block-title">이벤트 로그</div>
+        <div class="report-events">{event_html}</div>
+    </div>
+    """
+
+
+def _upload_report_html() -> str:
+    video_name = UPLOAD_ANALYSIS_STATE["video_name"] or "선택된 영상 없음"
+    class_start_time = UPLOAD_ANALYSIS_STATE["class_start_time"] or "-"
+    completed_at = UPLOAD_ANALYSIS_STATE["completed_at"] or "-"
+    summary = UPLOAD_ANALYSIS_STATE["summary"]
+    return f"""
+    <div class="report-summary-grid">
+        <div class="report-stat-card">
+            <div class="report-stat-label">업로드 파일</div>
+            <div class="report-stat-value">{html.escape(video_name)}</div>
+        </div>
+        <div class="report-stat-card">
+            <div class="report-stat-label">수업 시작</div>
+            <div class="report-stat-value">{html.escape(class_start_time)}</div>
+        </div>
+        <div class="report-stat-card">
+            <div class="report-stat-label">분석 상태</div>
+            <div class="report-stat-value">완료</div>
+        </div>
+        <div class="report-stat-card">
+            <div class="report-stat-label">리포트 생성</div>
+            <div class="report-stat-value">{html.escape(completed_at)}</div>
+        </div>
+    </div>
+    <div class="report-block">
+        <div class="report-block-title">업로드 분석 요약</div>
+        <div class="report-block-text">{html.escape(summary)}</div>
+    </div>
+    <div class="report-block">
+        <div class="report-block-title">추후 배치 추론 연결 위치</div>
+        <div class="report-block-text">
+            현재는 UI 흐름 확인용 결과입니다. 실제 배치 추론 결과를 연결할 때는
+            <code>process_uploaded_video(...)</code> 내부에서 분석 실행 후 이 리포트 HTML을 갱신하면 됩니다.
+        </div>
+    </div>
+    """
+
+
+def show_home_view():
+    return _view_updates("home")
+
+
+def show_live_view():
+    return _view_updates("live")
+
+
+def show_upload_view():
+    return _view_updates("upload")
+
+
+def show_live_report_view():
+    return (*_view_updates("report"), build_report_shell_html(_live_report_html()))
+
+
+def process_uploaded_video(video_path: str | None, class_start_time: str):
+    if not video_path:
+        error_html = """
+        <div class="report-block">
+            <div class="report-block-title">업로드 오류</div>
+            <div class="report-block-text">분석할 영상을 먼저 업로드해 주세요.</div>
+        </div>
+        """
+        return (
+            *_view_updates("upload"),
+            build_report_shell_html(error_html),
+            "영상 파일을 먼저 선택해 주세요.",
+        )
+
+    if not class_start_time:
+        error_html = """
+        <div class="report-block">
+            <div class="report-block-title">입력 오류</div>
+            <div class="report-block-text">수업 시작 시간을 입력해 주세요.</div>
+        </div>
+        """
+        return (
+            *_view_updates("upload"),
+            build_report_shell_html(error_html),
+            "수업 시작 시간을 입력해 주세요.",
+        )
+
+    UPLOAD_ANALYSIS_STATE["video_name"] = Path(video_path).name
+    UPLOAD_ANALYSIS_STATE["class_start_time"] = class_start_time
+    UPLOAD_ANALYSIS_STATE["completed_at"] = _now_ts().strftime("%Y-%m-%d %H:%M")
+    UPLOAD_ANALYSIS_STATE["summary"] = (
+        f"{Path(video_path).name} 파일에 대한 업로드 분석 흐름이 완료되었습니다. "
+        f"수업 시작 시간은 {class_start_time}로 기록되었으며, "
+        "추후 실제 배치 추론 결과를 이 위치에 연결할 수 있습니다."
+    )
+    return (
+        *_view_updates("report"),
+        build_report_shell_html(_upload_report_html()),
+        f"{Path(video_path).name} 분석이 완료되어 리포트 화면으로 이동했습니다.",
+    )
 
 
 def _debug_text(snapshot: RuntimeSnapshot) -> str:
