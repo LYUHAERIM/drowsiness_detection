@@ -123,10 +123,18 @@ def build_head_script() -> str:
         const slotW = SLOT_W_PCT    * canvasW;
         const slotH = SLOT_H_PCT    * canvasH;
 
+        // 웹캠을 center-crop해서 1:1 비율로 슬롯에 합성
+        // 원본 웹캠(16:9)을 슬롯(1:1)에 그대로 넣으면 얼굴이 찌그러져 FaceMesh 오탐
+        const camW = webcam.videoWidth  || webcam.width;
+        const camH = webcam.videoHeight || webcam.height;
+        const cropSize = Math.min(camW, camH);
+        const cropX = (camW - cropSize) / 2;
+        const cropY = (camH - cropSize) / 2;
+
         ctx.save();
         ctx.translate(slotX + slotW, slotY);
         ctx.scale(-1, 1);
-        ctx.drawImage(webcam, 0, 0, slotW, slotH);
+        ctx.drawImage(webcam, cropX, cropY, cropSize, cropSize, 0, 0, slotW, slotH);
         ctx.restore();
 
         const dataUrl = state.canvas.toDataURL("image/jpeg", 0.85);

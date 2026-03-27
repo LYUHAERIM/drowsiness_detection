@@ -149,15 +149,8 @@ class LiveZoomEngine:
             if not bool(r.get("is_teacher", 0)) and (bw < MIN_BBOX_W or bh < MIN_BBOX_H):
                 status = "NORMAL"
 
-            # NoFace = person_on(몸 있음) + FaceMesh 실패
-            # person_off / screen_off / ABSENT 는 NoFace가 아닌 이탈로 취급
-            cls_name = r.get("cls_name", "")
-            is_body_present = cls_name not in ("person_off", "screen_off") and status != "ABSENT"
-            noface = is_body_present and (
-                bool(r.get("is_noface", False)) or (
-                    not bool(r.get("lm_ok", 1)) and not bool(r.get("face_ok", 1))
-                )
-            )
+            # NoFace 판정은 infer_video.py가 결정한 is_noface를 그대로 사용
+            noface = bool(r.get("is_noface", False))
 
             # face_box는 썸네일 내부 좌표 → 프레임 절대 좌표로 변환 후 비율화
             raw_fb = r.get("face_box")

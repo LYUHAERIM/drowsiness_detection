@@ -44,7 +44,7 @@ class DrowsinessConfig:
     # ear_hold_strong_sec: 보조신호 있어도 최소 1초 (Soukupová & Čech 2016 기준)
     ear_ratio: float = 0.75         # baseline 대비 이 비율 미만 = 눈 감김
     ear_init_abs: float = 0.20      # baseline 수렴 전 절대 임계값 (0.18 → 0.20)
-    ear_hold_strong_sec: float = 0.6   # EAR + 보조 신호 → DROWSY 진입 시간 (1.0 → 0.6: 빠른 진입)
+    ear_hold_strong_sec: float = 1.0   # EAR + 보조 신호 → DROWSY 진입 시간 (Soukupová & Čech 2016 기준)
 
     # Level1: PERCLOS
     # window: NHTSA 실시간 시스템 권장 최솟값 30초 (기존 20초)
@@ -57,8 +57,8 @@ class DrowsinessConfig:
     # mar_ratio: 기준선 대비 여유 확보 1.50 (기존 1.30)
     # mar_hold_sec: PMC 2024 — 하품 최소 지속 2초 (DROWSY 복합 조건용)
     # mar_yawn_sec: YAWN 독립 상태 진입 시간 (moon/eda 방식, 0.3초 빠른 감지)
-    mar_init_abs: float = 0.35
-    mar_ratio: float = 1.20
+    mar_init_abs: float = 0.50
+    mar_ratio: float = 1.50
     mar_hold_sec: float = 2.0
     mar_yawn_sec: float = 0.3   # YAWN 상태 전환 최소 지속 시간
 
@@ -79,7 +79,7 @@ class DrowsinessConfig:
 
     # Level3: motion hold
     low_motion_th: float = 5.0
-    drowsy_hold_ext_sec: float = 1.0  # 3.0 → 1.0: 눈 뜨면 1초 안에 motion hold 해제
+    drowsy_hold_ext_sec: float = 3.0
 
     # Wakeup 감지: DROWSY 상태에서 큰 움직임이 연속 감지되면 강제 NORMAL 리셋
     # → 졸다가 몸을 움직이며 깨어나는 경우 PERCLOS 등 누적 상태 즉시 클리어
@@ -87,10 +87,10 @@ class DrowsinessConfig:
     wake_consec_sec: float = 0.5    # 0.5초 연속 큰 움직임 시 wakeup 확정
 
     # 회복 / 스무딩
-    recover_sec: float = 0.5          # 1.5 → 0.5: 눈 뜨면 0.5초만에 NORMAL 복귀
+    recover_sec: float = 1.5
     absent_hold_sec: float = 0.8
     absent_recover_sec: float = 0.5
-    smooth_window_sec: float = 1.0    # 0.4 → 1.0: FaceMesh 간헐 실패 시 상태 안정화
+    smooth_window_sec: float = 0.7
 
     # PERCLOS+pitch 조건: 현재 EAR이 이 비율 이상이면 발동 차단
     # → 과거 PERCLOS 누적값이 있어도 현재 눈을 충분히 뜨고 있으면 DROWSY 방지

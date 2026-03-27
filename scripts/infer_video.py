@@ -129,7 +129,7 @@ class PipelineConfig:
     noface_max_drowsy_hold: int = 30  # ≈3초 @ 10fps, ≈6초 @ 5fps
 
     # Pose fallback (FaceMesh lm_ok=False일 때 PoseDetector로 고개 숙임 감지)
-    use_pose_fallback: bool = True
+    use_pose_fallback: bool = False
     pose_conf: float = 0.5          # PoseDetector 검출 최소 신뢰도
     pose_consec_frames: int = 21    # 연속 감지 프레임 수 (≈3초 @ 7fps)
 
@@ -414,7 +414,10 @@ class ZoomPipeline:
             # - 최근 DROWSY 이력 + 저모션      → DROWSY 유지
             # - 이력 없음                      → NOFACE 표시
             # is_noface(15프레임 확정)와 무관하게 얼굴이 사라진 첫 프레임부터 적용
-            face_gone = not face_result.lm_ok and not face_result.face_ok
+            face_gone = (
+                not face_result.lm_ok and not face_result.face_ok
+                and det["cls"] not in ("person_off", "screen_off")
+            )
             display_noface = is_noface
             if face_gone:
                 active_motion = (
