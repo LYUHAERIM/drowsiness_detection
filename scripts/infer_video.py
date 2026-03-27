@@ -103,7 +103,7 @@ class PipelineConfig:
     yolo_max_det: int = 5 # 20 -> 5 수정
 
     # 슬롯 트래킹
-    slot_max_misses: int = 40       # 슬롯 삭제까지 허용 miss 프레임 수
+    slot_max_miss_sec: float = 3.0  # 슬롯 삭제까지 허용 miss 시간 (초) — fps에 맞게 자동 계산
     slot_match_dist: float = 0.40   # 슬롯-탐지 매칭 최대 정규화 거리
     row_group_thresh: int = 90      # 같은 행으로 묶는 y 거리 (px)
 
@@ -301,7 +301,7 @@ class ZoomPipeline:
 
         # 오래된 슬롯 삭제
         for sid in list(self._slots.keys()):
-            if self._slots[sid].misses > cfg.slot_max_misses:
+            if self._slots[sid].misses > int(cfg.slot_max_miss_sec * fps):
                 sl = self._slots[sid]
                 if sl.face_detector is not None:
                     sl.face_detector.close()
@@ -492,7 +492,7 @@ class ZoomPipeline:
         # ── 미탐지 슬롯(화면 이탈) → ABSENT 레코드 추가 ──────────────────────────
         for sid in um_slots:
             sl = self._slots.get(sid)
-            if sl is None or sl.misses > cfg.slot_max_misses:
+            if sl is None or sl.misses > int(cfg.slot_max_miss_sec * fps):
                 continue
             x1, y1, x2, y2 = sl.box if sl.box else (0, 0, 0, 0)
             records.append({

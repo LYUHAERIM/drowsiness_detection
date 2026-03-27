@@ -22,4 +22,3 @@ APP_TITLE = "온라인 수업 졸음 감지 시스템"
 APP_SUBTITLE = "실시간 AI 기반 수강생 상태 모니터링 데모"
 
 YOLO_CHECKPOINT_PATH = BASE_DIR / "checkpoint" / "yolo11n" / "weights" / "best.pt"
-# YOLO_CHECKPOINT_PATH = "/Volumes/T7/Dataset/CV 과제 2 - 졸음 감지 및 이탈 탐지 시스템/yolov11n_best.pt"

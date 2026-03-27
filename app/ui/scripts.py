@@ -197,9 +197,11 @@ def build_head_script() -> str:
             const h = (y2p - y1p) * rect.height;
             if (w < 4 || h < 4) continue;
 
+            // YAWN은 bbox에 표시하지 않음 (대시보드/CSV에는 유지) → NORMAL로 보여줌
+            const uiStatus = (s.status === "YAWN") ? "NORMAL" : s.status;
             // infer_video.py 동일 로직: noface면 status 무시, NOT FOUND 표시
-            const displayState = s.noface ? "NOT FOUND" : s.status;
-            const color = s.noface ? NOFACE_COLOR : (BBOX_COLORS[s.status] || BBOX_COLORS.NORMAL);
+            const displayState = s.noface ? "NOT FOUND" : uiStatus;
+            const color = s.noface ? NOFACE_COLOR : (BBOX_COLORS[uiStatus] || BBOX_COLORS.NORMAL);
             const lw = (displayState === "DROWSY" || displayState === "ABSENT") ? 3 : 2;
 
             // bbox 테두리
