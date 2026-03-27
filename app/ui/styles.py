@@ -201,6 +201,15 @@ def build_css() -> str:
         border: 1px dashed rgba(255, 255, 255, 0.18);
     }}
 
+    #bbox-overlay {{
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 5;
+        pointer-events: none;
+    }}
+
     #stage-caption {{
         margin-top: 10px;
         color: var(--muted);
@@ -321,39 +330,48 @@ def build_css() -> str:
     }}
 
     .status-normal {{
-        background: rgba(34, 197, 94, 0.10);
-        border-color: rgba(34, 197, 94, 0.20);
+        background: rgba(70, 220, 70, 0.10);
+        border-color: rgba(70, 220, 70, 0.20);
     }}
 
     .status-normal .hero-dot {{
-        background: #22c55e;
+        background: #46dc46;
     }}
 
     .status-drowsy {{
-        background: rgba(245, 158, 11, 0.10);
-        border-color: rgba(245, 158, 11, 0.20);
+        background: rgba(255, 0, 0, 0.10);
+        border-color: rgba(255, 0, 0, 0.20);
     }}
 
     .status-drowsy .hero-dot {{
-        background: #f59e0b;
+        background: #ff0000;
+    }}
+
+    .status-yawn {{
+        background: rgba(255, 128, 0, 0.10);
+        border-color: rgba(255, 128, 0, 0.20);
+    }}
+
+    .status-yawn .hero-dot {{
+        background: #ff8000;
     }}
 
     .status-absent {{
-        background: rgba(239, 68, 68, 0.10);
-        border-color: rgba(239, 68, 68, 0.20);
+        background: rgba(255, 165, 0, 0.10);
+        border-color: rgba(255, 165, 0, 0.20);
     }}
 
     .status-absent .hero-dot {{
-        background: #ef4444;
+        background: #ffa500;
     }}
 
     .status-unknown {{
-        background: rgba(113, 113, 122, 0.10);
-        border-color: rgba(113, 113, 122, 0.20);
+        background: rgba(160, 160, 160, 0.10);
+        border-color: rgba(160, 160, 160, 0.20);
     }}
 
     .status-unknown .hero-dot {{
-        background: #a1a1aa;
+        background: #a0a0a0;
     }}
 
     .info-grid {{

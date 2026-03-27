@@ -52,8 +52,10 @@ class VideoReader:
 
     @property
     def fps_effective(self) -> float:
-        """실제 출력 FPS (target_fps 또는 원본 FPS)."""
-        return self._target_fps if self._target_fps else self.fps
+        """실제 출력 FPS (stride 기반 실제 샘플링 FPS 또는 원본 FPS)."""
+        if self._target_fps and hasattr(self, "_stride"):
+            return self.fps / self._stride
+        return self.fps
 
     @property
     def width(self) -> int:

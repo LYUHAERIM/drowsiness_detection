@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import logging
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Optional
 
-from app.inference.live_engine import LiveDrowsinessEngine
+from app.config import YOLO_CHECKPOINT_PATH
+from app.inference.live_engine import LiveInferenceResult, LiveZoomEngine, SlotInfo
 
-ENGINE = LiveDrowsinessEngine(fps=5.0)
 if not logging.getLogger().handlers:
     logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(name)s: %(message)s")
 LOGGER = logging.getLogger(__name__)
+
+ENGINE = LiveZoomEngine(checkpoint_path=YOLO_CHECKPOINT_PATH, fps=5.0)
 
 
 @dataclass(frozen=True)
@@ -22,6 +25,8 @@ class RuntimeSnapshot:
     frame_received: bool
     frame_index: int
     running: bool
+    slots: list[SlotInfo] = field(default_factory=list)
+
 
 class LiveInferenceRuntime:
     def __init__(self):
@@ -36,6 +41,7 @@ class LiveInferenceRuntime:
             frame_received=False,
             frame_index=0,
             running=False,
+            slots=[],
         )
 
     def start(self) -> RuntimeSnapshot:
@@ -52,6 +58,7 @@ class LiveInferenceRuntime:
                 frame_received=False,
                 frame_index=0,
                 running=True,
+                slots=[],
             )
             return self._last_snapshot
 
@@ -71,6 +78,7 @@ class LiveInferenceRuntime:
                 frame_received=self._last_snapshot.frame_received,
                 frame_index=self._last_snapshot.frame_index,
                 running=False,
+                slots=self._last_snapshot.slots,
             )
             return self._last_snapshot
 
@@ -78,17 +86,21 @@ class LiveInferenceRuntime:
         with self._lock:
             return self._last_snapshot
 
-    def process_frame(self, data_url: str) -> RuntimeSnapshot:
+    def process_frame(self, data_url: str) -> tuple[RuntimeSnapshot, Optional[object]]:
+        """
+        Returns:
+            (snapshot, annotated_frame_bgr)
+            annotated_frame_bgr: np.ndarray or None
+        """
         with self._lock:
             if not self._running:
-                return self._last_snapshot
+                return self._last_snapshot, None
 
             try:
-                result = ENGINE.analyze_data_url(data_url)
+                result: LiveInferenceResult = ENGINE.analyze_data_url(data_url)
                 debug_text = (
                     f"frame_received={result.frame_received} "
                     f"frame_index={result.frame_index} "
-                    f"reason={result.reason} "
                     f"{result.debug_text}"
                 )
                 self._last_snapshot = RuntimeSnapshot(
@@ -96,12 +108,13 @@ class LiveInferenceRuntime:
                     alert=result.alert,
                     report=result.report,
                     debug_text=debug_text,
-                    reason=result.reason,
+                    reason="live",
                     frame_received=result.frame_received,
                     frame_index=result.frame_index,
                     running=True,
+                    slots=result.slots,
                 )
-                return self._last_snapshot
+                return self._last_snapshot, result.annotated_frame
             except Exception:
                 LOGGER.exception("Live inference failed")
                 self._last_snapshot = RuntimeSnapshot(
@@ -113,8 +126,9 @@ class LiveInferenceRuntime:
                     frame_received=bool(data_url),
                     frame_index=ENGINE.frame_count,
                     running=True,
+                    slots=[],
                 )
-                return self._last_snapshot
+                return self._last_snapshot, None
 
 
 RUNTIME = LiveInferenceRuntime()

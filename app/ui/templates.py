@@ -45,10 +45,11 @@ def build_stage_html(stage_media_url: str, stage_media_kind: str) -> str:
             {stage_media_html}
             <div id="cam-placeholder">Start 버튼을 눌러 카메라를 켜세요.</div>
             <video id="student-cam" autoplay muted playsinline></video>
+            <canvas id="bbox-overlay"></canvas>
         </div>
 
         <div id="stage-caption">
-            실제 강의 화면 위에 내 카메라만 3번째 학생 슬롯에 오버레이합니다.
+            실시간 감지 결과가 화면 위에 직접 표시됩니다.
         </div>
     </div>
     """
@@ -62,16 +63,19 @@ def build_status_panel_html(
     status_class_map = {
         "NORMAL": "status-normal",
         "DROWSY": "status-drowsy",
+        "YAWN":   "status-yawn",
         "ABSENT": "status-absent",
     }
     status_desc_map = {
         "NORMAL": "수업에 집중하고 있습니다",
         "DROWSY": "졸음이 감지되었습니다",
+        "YAWN":   "하품이 감지되었습니다",
         "ABSENT": "자리를 이탈했습니다",
     }
     status_ko_map = {
         "NORMAL": "정상",
         "DROWSY": "졸음",
+        "YAWN":   "하품",
         "ABSENT": "이탈",
     }
 

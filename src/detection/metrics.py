@@ -4,10 +4,12 @@ import numpy as np
 # https://github.com/google/mediapipe/blob/master/mediapipe/modules/face_geometry/data/canonical_face_model_uv_visualization.png
 LEFT_EYE = [362, 385, 387, 263, 373, 380]
 RIGHT_EYE = [33,  160, 158, 133, 153, 144]
-_MOUTH_TOP   = 13   # 윗입술 중앙
-_MOUTH_BOT   = 14   # 아랫입술 중앙
-_MOUTH_LEFT  = 78   # 왼쪽 입꼬리
-_MOUTH_RIGHT = 308  # 오른쪽 입꼬리
+_MOUTH_TOP_IN  = 13   # 윗입술 내부 중앙
+_MOUTH_BOT_IN  = 14   # 아랫입술 내부 중앙
+_MOUTH_TOP_OUT = 0    # 윗입술 외부 중앙 (더 넓은 개방 측정)
+_MOUTH_BOT_OUT = 17   # 아랫입술 외부 중앙
+_MOUTH_LEFT    = 78   # 왼쪽 입꼬리
+_MOUTH_RIGHT   = 308  # 오른쪽 입꼬리
 
 
 def _dist(a: np.ndarray, b: np.ndarray) -> float:
@@ -29,8 +31,11 @@ def mar(landmarks_px: np.ndarray) -> float:
     """
     Mouth Aspect Ratio (입 종횡비)
     - 0에 가까울수록 입이 닫힌 상태, 클수록 입이 벌어진 상태 (하품)
+    - 내부(13/14) + 외부(0/17) 두 쌍의 평균으로 EAR처럼 계산
     """
-    vertical   = _dist(landmarks_px[_MOUTH_TOP], landmarks_px[_MOUTH_BOT])
+    v_inner    = _dist(landmarks_px[_MOUTH_TOP_IN],  landmarks_px[_MOUTH_BOT_IN])
+    v_outer    = _dist(landmarks_px[_MOUTH_TOP_OUT], landmarks_px[_MOUTH_BOT_OUT])
+    vertical   = (v_inner + v_outer) / 2
     horizontal = _dist(landmarks_px[_MOUTH_LEFT], landmarks_px[_MOUTH_RIGHT])
     return vertical / (horizontal + 1e-6)
 

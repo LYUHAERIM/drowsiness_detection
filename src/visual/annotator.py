@@ -101,19 +101,19 @@ def draw_slot_bbox(
     Args:
         box_colors:   {"person_on": (R,G,B), ...}
         state_colors: {"NORMAL": (R,G,B), ...}
-        no_face:      얼굴 완전 미검출 여부 → NOFACE 표시
+        no_face:      얼굴 완전 미검출 여부 → NOT FOUND 표시
     """
     x1, y1, x2, y2 = [int(v) for v in box]
 
-    # 표시 상태 결정: NOFACE > final_state 순 우선
+    # 표시 상태 결정: NOT FOUND > final_state 순 우선
     # YAWN은 final_state 자체에 포함됨 (독립 상태)
     if no_face:
-        display_state = "NOFACE"
+        display_state = "NOT FOUND"
     else:
         display_state = final_state
 
     # bbox 테두리 색 결정
-    if display_state == "NOFACE":
+    if display_state == "NOT FOUND":
         border_color = (120, 120, 120)   # 회색
     elif display_state in state_colors and display_state not in ("NORMAL", "IGNORE", "ABSENT"):
         border_color = state_colors[display_state]
@@ -193,7 +193,7 @@ def draw_info_box(
     elif face_result.face_ok:
         lv = "L2"
     else:
-        lv = "NoFace"
+        lv = "NotFound"
 
     te      = " [T]" if slot.is_teacher else ""
     name    = slot.name_final if slot.name_final else f"slot_{slot.slot_id}"

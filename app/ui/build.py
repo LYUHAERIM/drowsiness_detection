@@ -43,6 +43,7 @@ def create_demo() -> gr.Blocks:
         alert="카메라가 꺼져 있습니다.",
         report="Start 버튼을 눌러 데모를 시작하세요.",
         is_running=False,
+        slots=[],
     )
 
     with gr.Blocks() as demo:
@@ -52,6 +53,14 @@ def create_demo() -> gr.Blocks:
         with gr.Row(elem_id="content-wrap"):
             with gr.Column(scale=7):
                 gr.HTML(build_stage_html(stage_media_url, stage_media_kind))
+
+                # 슬롯 JSON 브릿지: ack 변화 시 JS가 읽어서 bbox 오버레이 갱신
+                slots_json_box = gr.Textbox(
+                    value="[]",
+                    label="slots-json",
+                    elem_id="slots-json-output",
+                    elem_classes=["bridge-hidden"],
+                )
 
             with gr.Column(scale=3, elem_id="right-panel"):
                 panel_html = gr.HTML(initial_panel_html)
@@ -116,9 +125,10 @@ def create_demo() -> gr.Blocks:
             elem_classes=["bridge-hidden"],
         )
 
+        # 7개 출력: status, alert, report, panel_html, debug, ack, slots_json
         frame_submit_btn.click(
             fn=process_live_frame,
-            inputs=[frame_seq_box, frame_data_box, is_running_state],
+            inputs=[frame_seq_box, frame_data_box],
             outputs=[
                 status_box,
                 alert_box,
@@ -126,6 +136,7 @@ def create_demo() -> gr.Blocks:
                 panel_html,
                 debug_box,
                 frame_ack_box,
+                slots_json_box,
             ],
             queue=False,
             show_progress="hidden",
@@ -141,6 +152,7 @@ def create_demo() -> gr.Blocks:
                 panel_html,
                 debug_box,
                 frame_ack_box,
+                slots_json_box,
             ],
             js="() => { startOverlayCamera(); }",
         )
@@ -156,6 +168,7 @@ def create_demo() -> gr.Blocks:
                 panel_html,
                 debug_box,
                 frame_ack_box,
+                slots_json_box,
             ],
             js="() => { stopOverlayCamera(); }",
         )

@@ -31,4 +31,5 @@ dependencies = [
     "onnxslim>=0.1.71",
     "onnxruntime>=1.16.0",
     "coremltools>=8.0",
+    "gradio>=6.10.0",
 ]

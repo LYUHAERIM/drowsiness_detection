@@ -44,7 +44,7 @@ class DrowsinessConfig:
     # ear_hold_strong_sec: 보조신호 있어도 최소 1초 (Soukupová & Čech 2016 기준)
     ear_ratio: float = 0.75         # baseline 대비 이 비율 미만 = 눈 감김
     ear_init_abs: float = 0.20      # baseline 수렴 전 절대 임계값 (0.18 → 0.20)
-    ear_hold_strong_sec: float = 1.0   # EAR + 보조 신호 → DROWSY 진입 시간 (0.5 → 1.0)
+    ear_hold_strong_sec: float = 1.0   # EAR + 보조 신호 → DROWSY 진입 시간 (Soukupová & Čech 2016 기준)
 
     # Level1: PERCLOS
     # window: NHTSA 실시간 시스템 권장 최솟값 30초 (기존 20초)
