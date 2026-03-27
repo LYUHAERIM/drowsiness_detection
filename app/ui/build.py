@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import mimetypes
 from pathlib import Path
 
@@ -7,6 +5,7 @@ import gradio as gr
 
 from app.config import STAGE_MEDIA_PATH
 from app.demo_logic import (
+    describe_uploaded_file,
     on_start,
     on_stop,
     process_live_frame,
@@ -27,6 +26,7 @@ from app.ui.templates import (
     build_home_mode_card_html,
     build_stage_html,
     build_upload_intro_html,
+    build_upload_status_html,
 )
 
 
@@ -63,10 +63,7 @@ def create_demo() -> gr.Blocks:
     with gr.Blocks() as demo:
         gr.HTML('<div id="app-root">')
 
-        with gr.Column(
-            visible=True,
-            elem_classes=["view-shell", "home-view"],
-        ) as home_view:
+        with gr.Column(visible=True, elem_classes=["view-shell", "home-view"]) as home_view:
             gr.HTML(build_home_hero_html())
             with gr.Row(elem_classes=["home-card-grid"]):
                 with gr.Column(elem_classes=["home-card-column", "home-card-live"]):
@@ -78,16 +75,8 @@ def create_demo() -> gr.Blocks:
                             theme="live-card",
                             icon_kind="video",
                             features=[
-                                (
-                                    "zap",
-                                    "실시간 상태 표시",
-                                    "졸음, 이탈 상태를 즉시 감지",
-                                ),
-                                (
-                                    "video",
-                                    "웹캠 오버레이",
-                                    "데모 영상에 나를 합성하여 분석",
-                                ),
+                                ("zap", "실시간 상태 표시", "졸음, 이탈 상태를 즉시 감지"),
+                                ("video", "웹캠 오버레이", "데모 영상에 나를 합성하여 분석"),
                                 ("clock", "빠른 데모 체험", "2분 안에 기능 확인"),
                             ],
                         )
@@ -95,11 +84,7 @@ def create_demo() -> gr.Blocks:
                     home_live_btn = gr.Button(
                         "실시간 분석 시작",
                         elem_id="home-live-btn",
-                        elem_classes=[
-                            "home-card-cta",
-                            "home-card-button",
-                            "home-live-cta",
-                        ],
+                        elem_classes=["home-card-cta", "home-card-button", "home-live-cta"],
                     )
 
                 with gr.Column(elem_classes=["home-card-column", "home-card-upload"]):
@@ -111,34 +96,30 @@ def create_demo() -> gr.Blocks:
                             theme="upload-card",
                             icon_kind="upload",
                             features=[
-                                (
-                                    "upload",
-                                    "영상 업로드",
-                                    "1시간 이상의 긴 수업 영상 지원",
-                                ),
-                                ("zap", "상세 리포트", "시간대별 분석 그래프 및 통계"),
-                                ("clock", "비실시간 분석", "완료 후 종합 리포트 제공"),
+                                ("upload", "영상 업로드", "1시간 이상의 긴 수업 영상 지원"),
+                                ("spark", "상세 리포트", "상태/이벤트 중심 리포트 화면 제공"),
+                                ("trend", "자동 흐름", "분석 완료 후 리포트로 자동 이동"),
                             ],
                         )
                     )
                     home_upload_btn = gr.Button(
                         "영상 업로드하기",
                         elem_id="home-upload-btn",
-                        elem_classes=[
-                            "home-card-cta",
-                            "home-card-button",
-                            "home-upload-cta",
-                        ],
+                        elem_classes=["home-card-cta", "home-card-button", "home-upload-cta"],
                     )
             gr.HTML(build_home_footer_html())
 
-        with gr.Column(visible=False, elem_classes=["view-shell"]) as live_view:
-            gr.HTML(build_header_html())
+        with gr.Column(visible=False, elem_classes=["view-shell", "page-view"]) as live_view:
+            gr.HTML(
+                build_header_html(
+                    page_title="실시간 분석",
+                    page_subtitle="Demo Mode - 2분 영상",
+                    live_badge="LIVE",
+                )
+            )
             with gr.Row(elem_id="content-wrap"):
                 with gr.Column(scale=7):
                     gr.HTML(build_stage_html(stage_media_url, stage_media_kind))
-
-                    # 슬롯 JSON 브릿지: ack 변화 시 JS가 읽어서 bbox 오버레이 갱신
                     slots_json_box = gr.Textbox(
                         value="[]",
                         label="slots-json",
@@ -148,16 +129,9 @@ def create_demo() -> gr.Blocks:
 
                 with gr.Column(scale=3, elem_id="right-panel"):
                     panel_html = gr.HTML(initial_panel_html)
-
-                    with gr.Accordion(
-                        "디버그 / 원본 상태값",
-                        open=False,
-                        elem_id="debug-accordion",
-                    ):
+                    with gr.Accordion("디버그 / 원본 상태값", open=False, elem_id="debug-accordion"):
                         status_box = gr.Textbox(label="Status", value="NORMAL")
-                        alert_box = gr.Textbox(
-                            label="Alert", value="카메라가 꺼져 있습니다."
-                        )
+                        alert_box = gr.Textbox(label="Alert", value="카메라가 꺼져 있습니다.")
                         report_box = gr.Textbox(
                             label="Final Report",
                             lines=10,
@@ -169,63 +143,79 @@ def create_demo() -> gr.Blocks:
                             value="running=False frame_received=False",
                         )
 
-        with gr.Column(visible=False, elem_classes=["view-shell"]) as upload_view:
-            gr.HTML(build_header_html())
+        with gr.Column(visible=False, elem_classes=["view-shell", "page-view"]) as upload_view:
+            gr.HTML(
+                build_header_html(
+                    page_title="녹화 영상 분석",
+                    page_subtitle="수업 영상을 업로드하여 분석하세요",
+                )
+            )
             gr.HTML(build_upload_intro_html())
-            with gr.Row():
-                with gr.Column(scale=7):
-                    upload_video = gr.File(
-                        label="영상 업로드",
-                        file_types=["video"],
-                        type="filepath",
-                    )
+            with gr.Row(elem_classes=["upload-layout"]):
+                with gr.Column(scale=7, elem_classes=["upload-main-column"]):
+                    with gr.Column(elem_classes=["upload-card-shell", "upload-drop-card"]):
+                        gr.HTML('<div class="upload-card-title">영상 업로드</div>')
+                        gr.HTML('<div class="upload-card-subtitle">분석할 수업 영상을 선택하면 파일 상태를 바로 확인할 수 있습니다.</div>')
+                        upload_status_html = gr.HTML(build_upload_status_html())
+                        upload_video = gr.File(
+                            label="영상 업로드",
+                            file_types=["video"],
+                            type="filepath",
+                            elem_classes=["upload-file-input"],
+                        )
                     upload_status = gr.Textbox(
                         label="분석 상태",
                         value="영상과 수업 시작 시간을 입력한 뒤 분석을 시작하세요.",
                         interactive=False,
-                    )
-                with gr.Column(scale=5, elem_classes=["upload-panel"]):
-                    class_start_time = gr.Textbox(
-                        label="수업 시작 시간",
-                        placeholder="예: 09:00",
-                    )
-                    start_upload_analysis_btn = gr.Button(
-                        "분석 시작",
-                        elem_classes=["primary-btn"],
-                    )
-                    back_home_from_upload_btn = gr.Button(
-                        "홈으로",
-                        elem_classes=["secondary-btn"],
+                        elem_classes=["upload-status-box"],
                     )
 
-        with gr.Column(visible=False, elem_classes=["view-shell"]) as report_view:
-            gr.HTML(build_header_html())
+                with gr.Column(scale=5, elem_classes=["upload-side-column"]):
+                    with gr.Column(elem_classes=["upload-card-shell", "upload-form-card"]):
+                        gr.HTML('<div class="upload-card-title">수업 정보</div>')
+                        gr.HTML('<div class="upload-card-subtitle">리포트 시간 기준과 분석 실행 상태를 설정합니다.</div>')
+                        class_start_time = gr.Textbox(
+                            label="수업 시작 시간",
+                            placeholder="예: 09:00",
+                        )
+                        start_upload_analysis_btn = gr.Button(
+                            "추론 시작",
+                            elem_classes=["primary-btn", "action-btn"],
+                        )
+                        back_home_from_upload_btn = gr.Button(
+                            "홈으로",
+                            elem_classes=["secondary-btn", "action-btn"],
+                        )
+                    gr.HTML(
+                        """
+                        <div class="upload-card-shell upload-tip-card">
+                            <div class="upload-card-title">분석 팁</div>
+                            <div class="upload-tip-list">
+                                <div class="upload-tip-item">해상도가 높을수록 감지 정확도가 높아집니다.</div>
+                                <div class="upload-tip-item">참여자 얼굴이 선명한 영상을 사용하는 것이 좋습니다.</div>
+                                <div class="upload-tip-item">현재는 UI 흐름 우선 구현이며, 실제 배치 추론 결과를 같은 리포트 구조에 연결할 수 있습니다.</div>
+                            </div>
+                        </div>
+                        """
+                    )
+
+        with gr.Column(visible=False, elem_classes=["view-shell", "page-view"]) as report_view:
+            gr.HTML(
+                build_header_html(
+                    page_title="리포트",
+                    page_subtitle="실시간 또는 업로드 분석 결과를 확인합니다",
+                )
+            )
             report_html = gr.HTML("")
-            with gr.Row():
-                report_home_btn = gr.Button("홈으로", elem_classes=["secondary-btn"])
-                report_live_btn = gr.Button(
-                    "실시간으로 이동",
-                    elem_classes=["secondary-btn"],
-                )
-                report_upload_btn = gr.Button(
-                    "녹화 분석으로 이동",
-                    elem_classes=["secondary-btn"],
-                )
+            with gr.Row(elem_classes=["report-action-row"]):
+                report_home_btn = gr.Button("홈으로", elem_classes=["secondary-btn", "action-btn"])
+                report_live_btn = gr.Button("실시간으로 이동", elem_classes=["secondary-btn", "action-btn"])
+                report_upload_btn = gr.Button("녹화 분석으로 이동", elem_classes=["secondary-btn", "action-btn"])
 
         is_running_state = gr.State(False)
 
-        # 실제 동작 버튼 (화면에는 숨김)
-        start_btn = gr.Button(
-            "Start Camera",
-            elem_id="real-start-btn",
-            elem_classes=["bridge-hidden"],
-        )
-        stop_btn = gr.Button(
-            "Stop Camera",
-            elem_id="real-stop-btn",
-            elem_classes=["bridge-hidden"],
-        )
-
+        start_btn = gr.Button("Start Camera", elem_id="real-start-btn", elem_classes=["bridge-hidden"])
+        stop_btn = gr.Button("Stop Camera", elem_id="real-stop-btn", elem_classes=["bridge-hidden"])
         frame_seq_box = gr.Number(
             value=0,
             precision=0,
@@ -246,18 +236,9 @@ def create_demo() -> gr.Blocks:
             elem_id="frame-ack-output",
             elem_classes=["bridge-hidden"],
         )
-        frame_submit_btn = gr.Button(
-            "submit-frame",
-            elem_id="frame-submit-btn",
-            elem_classes=["bridge-hidden"],
-        )
-        go_report_btn = gr.Button(
-            "go-report",
-            elem_id="go-report-btn",
-            elem_classes=["bridge-hidden"],
-        )
+        frame_submit_btn = gr.Button("submit-frame", elem_id="frame-submit-btn", elem_classes=["bridge-hidden"])
+        go_report_btn = gr.Button("go-report", elem_id="go-report-btn", elem_classes=["bridge-hidden"])
 
-        # 7개 출력: status, alert, report, panel_html, debug, ack, slots_json
         frame_submit_btn.click(
             fn=process_live_frame,
             inputs=[frame_seq_box, frame_data_box],
@@ -305,45 +286,25 @@ def create_demo() -> gr.Blocks:
             js="() => { stopOverlayCamera(); }",
         )
 
-        home_live_btn.click(
-            fn=show_live_view,
-            outputs=[home_view, live_view, upload_view, report_view],
-        )
-        home_upload_btn.click(
-            fn=show_upload_view,
-            outputs=[home_view, live_view, upload_view, report_view],
-        )
-        back_home_from_upload_btn.click(
-            fn=show_home_view,
-            outputs=[home_view, live_view, upload_view, report_view],
-        )
-        report_home_btn.click(
-            fn=show_home_view,
-            outputs=[home_view, live_view, upload_view, report_view],
-        )
-        report_live_btn.click(
-            fn=show_live_view,
-            outputs=[home_view, live_view, upload_view, report_view],
-        )
-        report_upload_btn.click(
-            fn=show_upload_view,
-            outputs=[home_view, live_view, upload_view, report_view],
-        )
+        home_live_btn.click(fn=show_live_view, outputs=[home_view, live_view, upload_view, report_view])
+        home_upload_btn.click(fn=show_upload_view, outputs=[home_view, live_view, upload_view, report_view])
+        back_home_from_upload_btn.click(fn=show_home_view, outputs=[home_view, live_view, upload_view, report_view])
+        report_home_btn.click(fn=show_home_view, outputs=[home_view, live_view, upload_view, report_view])
+        report_live_btn.click(fn=show_live_view, outputs=[home_view, live_view, upload_view, report_view])
+        report_upload_btn.click(fn=show_upload_view, outputs=[home_view, live_view, upload_view, report_view])
         go_report_btn.click(
             fn=show_live_report_view,
             outputs=[home_view, live_view, upload_view, report_view, report_html],
         )
+        upload_video.change(
+            fn=describe_uploaded_file,
+            inputs=[upload_video],
+            outputs=[upload_status_html, upload_status],
+        )
         start_upload_analysis_btn.click(
             fn=process_uploaded_video,
             inputs=[upload_video, class_start_time],
-            outputs=[
-                home_view,
-                live_view,
-                upload_view,
-                report_view,
-                report_html,
-                upload_status,
-            ],
+            outputs=[home_view, live_view, upload_view, report_view, report_html, upload_status],
         )
 
         gr.HTML("</div>")

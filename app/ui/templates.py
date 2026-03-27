@@ -1,16 +1,32 @@
-from __future__ import annotations
-
 from app.config import APP_SUBTITLE, APP_TITLE
 
 
-def build_header_html() -> str:
-    return f"""
-    <div id="app-header">
-        <div class="brand-mark">AI</div>
-        <div class="brand-copy">
-            <h1>{APP_TITLE}</h1>
-            <p>{APP_SUBTITLE}</p>
+def build_header_html(page_title: str = "", page_subtitle: str = "", live_badge: str = "") -> str:
+    page_copy = ""
+    if page_title:
+        badge_html = (
+            f'<div class="page-status-badge">{live_badge}</div>' if live_badge else ""
+        )
+        page_copy = f"""
+        <div class="page-heading">
+            <div class="page-heading-top">
+                <h2>{page_title}</h2>
+                {badge_html}
+            </div>
+            <p>{page_subtitle}</p>
         </div>
+        """
+
+    return f"""
+    <div id="app-header" class="top-header">
+        <div class="brand-wrap">
+            <div class="brand-mark">AI</div>
+            <div class="brand-copy">
+                <h1>{APP_TITLE}</h1>
+                <p>{APP_SUBTITLE}</p>
+            </div>
+        </div>
+        {page_copy}
     </div>
     """
 
@@ -61,6 +77,23 @@ def _home_icon_svg(kind: str) -> str:
             <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="12" cy="12" r="9"></circle>
                 <path d="M12 7v5l3 2"></path>
+            </svg>
+        """,
+        "file": """
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <path d="M14 2v6h6"></path>
+            </svg>
+        """,
+        "spark": """
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 3l1.9 4.9L19 10l-5.1 2.1L12 17l-1.9-4.9L5 10l5.1-2.1z"></path>
+            </svg>
+        """,
+        "trend": """
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M3 17l6-6 4 4 7-7"></path>
+                <path d="M14 8h6v6"></path>
             </svg>
         """,
     }
@@ -115,37 +148,86 @@ def build_home_footer_html() -> str:
 def build_upload_intro_html() -> str:
     return """
     <div class="upload-shell">
-        <div class="upload-copy">
+        <div class="upload-copy upload-hero-card">
             <div class="section-badge">Upload Analysis</div>
             <h2>녹화 영상 분석</h2>
-            <p>수업 영상을 업로드하고 수업 시작 시간을 입력하면 분석 완료 후 리포트 화면으로 이동합니다.</p>
+            <p>업로드, 시간 입력, 추론 시작, 리포트 이동까지 한 화면 흐름으로 정리했습니다.</p>
+            <div class="upload-step-list">
+                <div class="upload-step-item">
+                    <div class="upload-step-number">1</div>
+                    <div>
+                        <div class="upload-step-title">영상 업로드</div>
+                        <div class="upload-step-desc">MP4, AVI, MOV 등 녹화본을 선택합니다.</div>
+                    </div>
+                </div>
+                <div class="upload-step-item">
+                    <div class="upload-step-number">2</div>
+                    <div>
+                        <div class="upload-step-title">수업 시작 시간 지정</div>
+                        <div class="upload-step-desc">리포트 타임라인 기준 시각으로 사용합니다.</div>
+                    </div>
+                </div>
+                <div class="upload-step-item">
+                    <div class="upload-step-number">3</div>
+                    <div>
+                        <div class="upload-step-title">추론 시작 후 자동 리포트 이동</div>
+                        <div class="upload-step-desc">기존 추론 함수를 연결할 준비가 된 흐름입니다.</div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="upload-feature-list">
             <div class="upload-feature-card">
-                <div class="feature-title">영상 업로드</div>
-                <div class="feature-desc">MP4, AVI, MOV 등 수업 녹화본을 선택합니다.</div>
+                <div class="feature-icon emerald">{_home_icon_svg("video")}</div>
+                <div class="feature-title">얼굴 감지 및 추적</div>
+                <div class="feature-desc">학생별 상태를 누적해 요약 카드와 이벤트 영역으로 연결합니다.</div>
             </div>
             <div class="upload-feature-card">
-                <div class="feature-title">수업 시작 시간</div>
-                <div class="feature-desc">리포트 시간대 표기와 요약 문구에 활용됩니다.</div>
+                <div class="feature-icon amber">{_home_icon_svg("spark")}</div>
+                <div class="feature-title">졸음 감지</div>
+                <div class="feature-desc">졸음 및 하품 감지 결과를 업로드 리포트에도 연결할 수 있게 준비합니다.</div>
             </div>
             <div class="upload-feature-card">
-                <div class="feature-title">분석 후 리포트</div>
-                <div class="feature-desc">현재는 UI 흐름 우선 구현이며, 추후 배치 추론 함수 연결이 가능합니다.</div>
+                <div class="feature-icon red">{_home_icon_svg("clock")}</div>
+                <div class="feature-title">이탈 감지</div>
+                <div class="feature-desc">이탈 횟수와 핵심 이벤트 영역을 리포트 카드 형태로 표시합니다.</div>
             </div>
         </div>
     </div>
     """
 
 
-def build_report_shell_html(content: str) -> str:
+def build_upload_status_html(
+    file_name: str = "아직 선택된 파일이 없습니다.",
+    file_meta: str = "영상을 업로드하면 파일 상태가 이 영역에 표시됩니다.",
+    is_ready: bool = False,
+) -> str:
+    state_class = "upload-dropzone ready" if is_ready else "upload-dropzone"
+    state_label = "업로드 완료" if is_ready else "업로드 대기"
+    action_text = "다른 파일을 선택하려면 다시 업로드하세요." if is_ready else "클릭하거나 파일을 끌어다 놓아 선택할 수 있습니다."
+
+    return f"""
+    <div class="{state_class}">
+        <div class="upload-drop-icon">{_home_icon_svg("file")}</div>
+        <div class="upload-drop-copy">
+            <div class="upload-drop-state">{state_label}</div>
+            <div class="upload-drop-title">{file_name}</div>
+            <div class="upload-drop-meta">{file_meta}</div>
+            <div class="upload-drop-help">{action_text}</div>
+        </div>
+    </div>
+    """
+
+
+def build_report_shell_html(content: str, title: str = "분석 리포트", subtitle: str = "") -> str:
+    report_subtitle = subtitle or "실시간 분석 누적 상태 또는 업로드 분석 결과를 이 화면에서 확인합니다."
     return f"""
     <div class="report-shell">
         <div class="report-page-header">
             <div>
                 <div class="section-badge">Analysis Report</div>
-                <h2>분석 리포트</h2>
-                <p>실시간 분석 누적 상태 또는 업로드 분석 결과를 이 화면에서 확인합니다.</p>
+                <h2>{title}</h2>
+                <p>{report_subtitle}</p>
             </div>
         </div>
         <div class="report-page-body">
@@ -199,80 +281,6 @@ def build_stage_html(stage_media_url: str, stage_media_kind: str) -> str:
 
         <div id="stage-caption">
             실시간 감지 결과가 화면 위에 직접 표시됩니다.
-        </div>
-    </div>
-    """
-
-
-def build_status_panel_html(
-    camera_state: str, status: str, alert: str, report: str, is_running: bool
-) -> str:
-    camera_class = "cam-on" if camera_state == "ON" else "cam-off"
-
-    status_class_map = {
-        "NORMAL": "status-normal",
-        "DROWSY": "status-drowsy",
-        "YAWN":   "status-yawn",
-        "ABSENT": "status-absent",
-    }
-    status_desc_map = {
-        "NORMAL": "수업에 집중하고 있습니다",
-        "DROWSY": "졸음이 감지되었습니다",
-        "YAWN":   "하품이 감지되었습니다",
-        "ABSENT": "자리를 이탈했습니다",
-    }
-    status_ko_map = {
-        "NORMAL": "정상",
-        "DROWSY": "졸음",
-        "YAWN":   "하품",
-        "ABSENT": "이탈",
-    }
-
-    status_class = status_class_map.get(status, "status-unknown")
-    status_desc = status_desc_map.get(status, "상태를 확인할 수 없습니다")
-    status_label = status_ko_map.get(status, status)
-    live_text = "실시간 분석 중" if is_running else "대기 중"
-
-    return f"""
-    <div class="panel-shell">
-        <div class="panel-header">
-            <div>
-                <div class="panel-eyebrow">MONITORING PANEL</div>
-                <div class="panel-title">Student Status</div>
-            </div>
-            <div class="camera-chip {camera_class}">{camera_state}</div>
-        </div>
-
-        <div class="hero-card {status_class}">
-            <div class="hero-card-row">
-                <div>
-                    <div class="hero-label">현재 상태</div>
-                    <div class="hero-value">{status_label}</div>
-                    <div class="hero-desc">{status_desc}</div>
-                </div>
-                <div class="hero-dot"></div>
-            </div>
-        </div>
-
-        <div class="info-grid">
-            <div class="info-card compact-card">
-                <div class="card-label">Camera</div>
-                <div class="card-value">{camera_state}</div>
-            </div>
-            <div class="info-card compact-card">
-                <div class="card-label">Runtime</div>
-                <div class="card-value">{live_text}</div>
-            </div>
-        </div>
-
-        <div class="info-card">
-            <div class="card-label">Alert</div>
-            <div class="card-value">{alert}</div>
-        </div>
-
-        <div class="info-card report-card">
-            <div class="card-label">Final Report</div>
-            <pre class="report-text">{report}</pre>
         </div>
     </div>
     """
