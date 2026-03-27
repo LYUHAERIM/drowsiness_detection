@@ -25,6 +25,8 @@ PANEL_STATE: dict[str, Any] = {
     "prev_statuses": {},
     "last_alert_time": {},
     "alerts": [],
+    "timeline": [],
+    "last_timeline_bucket": -1,
 }
 
 
@@ -35,6 +37,8 @@ def _reset_panel_state() -> None:
     PANEL_STATE["prev_statuses"] = {}
     PANEL_STATE["last_alert_time"] = {}
     PANEL_STATE["alerts"] = []
+    PANEL_STATE["timeline"] = []
+    PANEL_STATE["last_timeline_bucket"] = -1
 
 
 def _stop_panel_state() -> None:
@@ -147,6 +151,8 @@ def _sync_panel_state(snapshot: RuntimeSnapshot) -> None:
                 PANEL_STATE["last_alert_time"][name] = now
         PANEL_STATE["prev_statuses"][sid] = status
 
+    _append_timeline_sample(snapshot)
+
 
 def _format_time(dt: datetime) -> str:
     return dt.strftime("%H:%M:%S")
@@ -162,6 +168,29 @@ def _elapsed_sec() -> int:
     if PANEL_STATE["session_started_at"] is None:
         return 0
     return int(time.time() - PANEL_STATE["session_started_at"])
+
+
+def _append_timeline_sample(snapshot: RuntimeSnapshot) -> None:
+    elapsed = _elapsed_sec()
+    bucket = elapsed // 15
+    if bucket == PANEL_STATE["last_timeline_bucket"]:
+        return
+
+    student_slots = [slot for slot in snapshot.slots if not slot.is_teacher]
+    normal = sum(1 for slot in student_slots if slot.status == "NORMAL")
+    drowsy = sum(1 for slot in student_slots if slot.status == "DROWSY")
+    absent = sum(1 for slot in student_slots if slot.status == "ABSENT")
+
+    PANEL_STATE["timeline"].append(
+        {
+            "time": _format_duration(elapsed),
+            "normal": normal,
+            "drowsy": drowsy,
+            "absence": absent,
+        }
+    )
+    PANEL_STATE["timeline"] = PANEL_STATE["timeline"][-10:]
+    PANEL_STATE["last_timeline_bucket"] = bucket
 
 
 def _alert_tone(alert_type: str) -> str:
@@ -363,7 +392,6 @@ def render_panel_html(
     return f"""
     <div class="panel-shell">
         {_build_control_panel(is_running)}
-        {_build_status_card(status, slots)}
         {_build_slot_list(slots)}
         {_build_alert_card(alerts)}
     </div>
@@ -419,6 +447,7 @@ def build_live_report_data() -> dict[str, Any]:
             absent_students += 1
 
     alerts = deepcopy(PANEL_STATE["alerts"])
+    timeline = deepcopy(PANEL_STATE["timeline"])
     events = [
         {
             "title": "졸음 감지" if alert["type"] == "DROWSY" else "자리 이탈",
@@ -458,6 +487,9 @@ def build_live_report_data() -> dict[str, Any]:
         "events": events,
         "participants": participants,
         "highlights": highlights,
+        "chart_title": "시간대별 상태 분석",
+        "chart_subtitle": "15초 단위로 집계한 정상 / 졸음 / 이탈 상태 변화입니다.",
+        "chart_points": timeline,
     }
 
 

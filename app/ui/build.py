@@ -123,20 +123,20 @@ def create_demo() -> gr.Blocks:
         report_live_btn = gr.Button("", elem_id="report-live-btn", elem_classes=["bridge-hidden"])
         report_upload_btn = gr.Button("", elem_id="report-upload-btn", elem_classes=["bridge-hidden"])
 
-        with gr.Group(visible=True, elem_classes=["view-shell", "view-card"]) as home_view:
+        with gr.Group(visible=True, elem_classes=["view-shell", "home-shell"]) as home_view:
             gr.HTML(build_home_hero_html())
             with gr.Row(elem_classes=["home-card-grid"]):
                 gr.HTML(
                     build_home_card_html(
                         tone="blue",
-                        icon="●",
+                        icon="🎥",
                         title="실시간 분석",
                         subtitle="Realtime Mode",
-                        description="웹캠 오버레이와 실시간 상태 감지를 중심으로 Figma 스타일의 대시보드 흐름을 재구성했습니다.",
+                        description="2분 데모 영상에 내 웹캠을 오버레이하여 실시간 분석",
                         features=[
-                            "강의 배경 위 웹캠 오버레이",
-                            "우측 상태 카드와 알림 패널",
-                            "리포트는 별도 페이지로 분리",
+                            ("실시간 상태 표시", "졸음, 이탈 상태를 즉시 감지", "⚡"),
+                            ("웹캠 오버레이", "데모 영상에 나를 합성하여 분석", "🎥"),
+                            ("빠른 데모 체험", "2분 안에 기능 확인", "🕒"),
                         ],
                         button_label="실시간 분석 시작",
                         target_id="nav-live-btn",
@@ -145,14 +145,14 @@ def create_demo() -> gr.Blocks:
                 gr.HTML(
                     build_home_card_html(
                         tone="violet",
-                        icon="▲",
+                        icon="📤",
                         title="녹화 영상 분석",
                         subtitle="Upload Mode",
-                        description="영상 업로드부터 시간 지정, 분석 완료 후 자동 리포트 이동까지 업로드 흐름을 하나의 페이지로 정리했습니다.",
+                        description="긴 수업 영상을 업로드하여 분석 리포트 생성",
                         features=[
-                            "업로드 상태 즉시 표시",
-                            "수업 시작 시간 입력",
-                            "분석 완료 시 자동 리포트 전환",
+                            ("영상 업로드", "1시간 이상의 긴 수업 영상 지원", "📤"),
+                            ("상세 리포트", "시간대별 분석 그래프 및 통계", "📊"),
+                            ("비실시간 분석", "완료 후 종합 리포트 제공", "🕒"),
                         ],
                         button_label="영상 업로드하기",
                         target_id="nav-upload-btn",

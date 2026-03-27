@@ -190,45 +190,87 @@ def build_css() -> str:
         border: 1px solid var(--line);
     }}
 
+    .home-shell {{
+        position: relative;
+        min-height: calc(100vh - 68px);
+        background: transparent;
+        border: none;
+        box-shadow: none;
+        overflow: visible;
+    }}
+
     .home-hero {{
-        padding: 10px 28px 0;
+        position: relative;
+        padding: 36px 28px 0;
         display: flex;
         flex-direction: column;
         align-items: center;
         text-align: center;
-        gap: 18px;
+        gap: 16px;
+        overflow: hidden;
     }}
 
     .home-hero h1 {{
-        max-width: 860px;
+        max-width: 920px;
+        font-size: 48px;
+        line-height: 1.08;
     }}
 
     .hero-note {{
-        max-width: 720px;
-        padding: 16px 18px;
-        border-radius: 18px;
-        background: rgba(15, 23, 42, 0.58);
-        border: 1px solid var(--line);
-        color: var(--text-soft);
+        max-width: 760px;
+        color: #94a3b8;
+        font-size: 20px;
+        line-height: 1.55;
+    }}
+
+    .home-bg {{
+        position: absolute;
+        border-radius: 999px;
+        filter: blur(80px);
+        pointer-events: none;
+        opacity: 0.9;
+    }}
+
+    .home-bg-blue {{
+        width: 360px;
+        height: 240px;
+        top: -30px;
+        left: 16%;
+        background: rgba(37, 99, 235, 0.18);
+    }}
+
+    .home-bg-violet {{
+        width: 320px;
+        height: 220px;
+        top: 20px;
+        right: 18%;
+        background: rgba(124, 58, 237, 0.16);
+    }}
+
+    .hero-badge-icon {{
+        color: #60a5fa;
         font-size: 14px;
-        line-height: 1.6;
+        line-height: 1;
     }}
 
     .home-card-grid {{
-        gap: 20px;
-        padding: 0 28px 28px;
+        max-width: 1024px;
+        margin: 0 auto;
+        gap: 24px;
+        padding: 22px 28px 28px;
     }}
 
     .mode-card {{
         height: 100%;
-        padding: 28px;
-        border-radius: 26px;
-        border: 1px solid rgba(148, 163, 184, 0.12);
+        min-height: 540px;
+        padding: 30px;
+        border-radius: 24px;
+        border: 1px solid rgba(71, 85, 105, 0.55);
         background:
-            linear-gradient(180deg, rgba(22, 32, 58, 0.96) 0%, rgba(15, 22, 40, 0.96) 100%);
-        box-shadow: var(--shadow-lg);
+            linear-gradient(180deg, rgba(31, 41, 55, 0.98) 0%, rgba(30, 41, 59, 0.98) 100%);
+        box-shadow: 0 16px 34px rgba(2, 6, 23, 0.24);
         cursor: pointer;
-        transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+        transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
     }}
 
     .mode-card:hover {{
@@ -236,41 +278,43 @@ def build_css() -> str:
     }}
 
     .mode-card-blue:hover {{
-        border-color: rgba(96, 165, 250, 0.42);
-        box-shadow: 0 20px 40px rgba(37, 99, 235, 0.18);
+        border-color: rgba(59, 130, 246, 0.46);
+        box-shadow: 0 22px 44px rgba(37, 99, 235, 0.14);
     }}
 
     .mode-card-violet:hover {{
-        border-color: rgba(167, 139, 250, 0.42);
-        box-shadow: 0 20px 40px rgba(124, 58, 237, 0.18);
+        border-color: rgba(168, 85, 247, 0.46);
+        box-shadow: 0 22px 44px rgba(124, 58, 237, 0.14);
     }}
 
     .mode-card-icon {{
-        width: 64px;
-        height: 64px;
+        width: 56px;
+        height: 56px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 20px;
+        border-radius: 14px;
         margin-bottom: 18px;
         background: rgba(255, 255, 255, 0.05);
-        font-size: 28px;
+        font-size: 26px;
     }}
 
     .mode-card-blue .mode-card-icon {{
-        background: rgba(37, 99, 235, 0.14);
-        border: 1px solid rgba(96, 165, 250, 0.22);
+        background: rgba(59, 130, 246, 0.10);
+        border: 1px solid rgba(59, 130, 246, 0.20);
+        color: #60a5fa;
     }}
 
     .mode-card-violet .mode-card-icon {{
-        background: rgba(124, 58, 237, 0.14);
-        border: 1px solid rgba(167, 139, 250, 0.22);
+        background: rgba(168, 85, 247, 0.10);
+        border: 1px solid rgba(168, 85, 247, 0.20);
+        color: #c084fc;
     }}
 
     .mode-card-copy {{
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 8px;
         margin-bottom: 18px;
     }}
 
@@ -285,40 +329,95 @@ def build_css() -> str:
 
     .mode-card p {{
         margin: 0;
-        color: var(--text-muted);
+        color: #cbd5e1;
         line-height: 1.7;
+        font-size: 16px;
     }}
 
     .mode-card-list,
     .upload-intro ul,
     .report-highlight-list {{
         margin: 0;
-        padding-left: 18px;
-        color: var(--text-soft);
+        padding-left: 0;
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 12px;
+    }}
+
+    .mode-feature {{
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+    }}
+
+    .mode-feature-icon {{
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 10px;
+        flex-shrink: 0;
+        margin-top: 2px;
+        font-size: 14px;
+    }}
+
+    .mode-card-blue .mode-feature-icon {{
+        background: rgba(59, 130, 246, 0.10);
+        color: #60a5fa;
+    }}
+
+    .mode-card-violet .mode-feature-icon {{
+        background: rgba(168, 85, 247, 0.10);
+        color: #c084fc;
+    }}
+
+    .mode-feature-copy {{
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+    }}
+
+    .mode-feature-title {{
+        color: #e2e8f0;
+        font-size: 14px;
+        line-height: 1.5;
+    }}
+
+    .mode-feature-desc {{
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.55;
+    }}
+
+    .mode-feature-title,
+    .mode-card h2,
+    .mode-card-cta {{
+        letter-spacing: -0.01em;
     }}
 
     .mode-card-cta {{
-        margin-top: 22px;
+        margin-top: 26px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: 100%;
-        min-height: 52px;
-        border-radius: 16px;
+        min-height: 48px;
+        border-radius: 14px;
         font-weight: 700;
         background: rgba(255, 255, 255, 0.06);
-        color: var(--text);
+        color: white;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
     }}
 
     .mode-card-blue .mode-card-cta {{
         background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+        box-shadow: 0 18px 30px rgba(37, 99, 235, 0.18);
     }}
 
     .mode-card-violet .mode-card-cta {{
-        background: linear-gradient(135deg, #7c3aed 0%, #6d28d9 100%);
+        background: linear-gradient(135deg, #9333ea 0%, #7e22ce 100%);
+        box-shadow: 0 18px 30px rgba(147, 51, 234, 0.18);
     }}
 
     .live-layout,
@@ -824,6 +923,88 @@ def build_css() -> str:
         padding: 20px;
     }}
 
+    .report-chart-card {{
+        overflow: hidden;
+    }}
+
+    .report-chart-legend {{
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        color: var(--text-muted);
+        font-size: 12px;
+    }}
+
+    .report-chart-legend span {{
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }}
+
+    .chart-dot {{
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-flex;
+    }}
+
+    .chart-normal {{
+        background: #10b981;
+    }}
+
+    .chart-drowsy {{
+        background: #f59e0b;
+    }}
+
+    .chart-absence {{
+        background: #ef4444;
+    }}
+
+    .report-chart-wrap {{
+        margin-top: 18px;
+        min-height: 260px;
+        padding: 18px 14px 12px;
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        background:
+            linear-gradient(180deg, rgba(15, 23, 42, 0.78) 0%, rgba(8, 13, 24, 0.82) 100%);
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+        gap: 12px;
+        align-items: end;
+    }}
+
+    .report-chart-col {{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+    }}
+
+    .report-chart-stack {{
+        width: 100%;
+        min-height: 190px;
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        gap: 4px;
+    }}
+
+    .chart-segment {{
+        width: 100%;
+        border-radius: 10px 10px 4px 4px;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    }}
+
+    .report-chart-label {{
+        color: var(--text-muted);
+        font-size: 11px;
+        text-align: center;
+        white-space: nowrap;
+    }}
+
     .report-card-head,
     .participant-head,
     .report-event-head {{
@@ -951,6 +1132,15 @@ def build_css() -> str:
         .home-hero h1,
         .report-hero h2 {{
             font-size: 30px;
+        }}
+
+        .hero-note {{
+            font-size: 16px;
+        }}
+
+        .mode-card {{
+            min-height: auto;
+            padding: 24px;
         }}
 
         .report-summary-grid {{

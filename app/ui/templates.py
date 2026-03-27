@@ -56,11 +56,16 @@ def build_shell_header_html(
 def build_home_hero_html() -> str:
     return f"""
     <section class="home-hero">
-        <div class="hero-badge">AI-Powered Monitoring System</div>
+        <div class="home-bg home-bg-blue"></div>
+        <div class="home-bg home-bg-violet"></div>
+        <div class="hero-badge">
+            <span class="hero-badge-icon">📡</span>
+            <span>AI-Powered Monitoring System</span>
+        </div>
         <h1>{APP_TITLE}</h1>
         <p>{APP_SUBTITLE}</p>
         <div class="hero-note">
-            실시간 모니터링과 녹화 영상 분석을 하나의 흐름으로 정리한 데모 UI입니다.
+            온라인 수업에서 졸음 및 이탈 상태를 실시간으로 모니터링합니다
         </div>
     </section>
     """
@@ -73,12 +78,21 @@ def build_home_card_html(
     title: str,
     subtitle: str,
     description: str,
-    features: list[str],
+    features: list[tuple[str, str, str]],
     button_label: str,
     target_id: str,
 ) -> str:
     features_html = "".join(
-        f"<li>{html.escape(feature)}</li>" for feature in features
+        f"""
+        <div class="mode-feature">
+            <div class="mode-feature-icon">{html.escape(feature_icon)}</div>
+            <div class="mode-feature-copy">
+                <div class="mode-feature-title">{html.escape(feature_title)}</div>
+                <div class="mode-feature-desc">{html.escape(feature_desc)}</div>
+            </div>
+        </div>
+        """
+        for feature_title, feature_desc, feature_icon in features
     )
     return f"""
     <article class="mode-card mode-card-{html.escape(tone)}" onclick="clickHiddenButton('{target_id}')">
@@ -88,7 +102,7 @@ def build_home_card_html(
             <h2>{html.escape(title)}</h2>
             <p>{html.escape(description)}</p>
         </div>
-        <ul class="mode-card-list">{features_html}</ul>
+        <div class="mode-card-list">{features_html}</div>
         <div class="mode-card-cta">{html.escape(button_label)}</div>
     </article>
     """
@@ -261,6 +275,44 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
     highlight_html = "".join(
         f"<li>{html.escape(text)}</li>" for text in highlights
     )
+    chart_points = report_data.get("chart_points", [])
+    chart_columns = (
+        "".join(
+            f"""
+            <div class="report-chart-col">
+                <div class="report-chart-stack">
+                    <div class="chart-segment chart-normal" style="height:{max(point.get('normal', 0) * 18, 6)}px;"></div>
+                    <div class="chart-segment chart-drowsy" style="height:{max(point.get('drowsy', 0) * 18, 0)}px;"></div>
+                    <div class="chart-segment chart-absence" style="height:{max(point.get('absence', 0) * 18, 0)}px;"></div>
+                </div>
+                <div class="report-chart-label">{html.escape(point.get('time', ''))}</div>
+            </div>
+            """
+            for point in chart_points
+        )
+        if chart_points
+        else '<div class="report-placeholder">그래프를 표시할 실시간 히스토리가 아직 없습니다.</div>'
+    )
+    chart_html = (
+        f"""
+        <section class="report-card report-chart-card">
+            <div class="report-card-head">
+                <div>
+                    <h3>{html.escape(report_data.get('chart_title', '시간대별 상태 분석'))}</h3>
+                    <span>{html.escape(report_data.get('chart_subtitle', ''))}</span>
+                </div>
+                <div class="report-chart-legend">
+                    <span><i class="chart-dot chart-normal"></i>정상</span>
+                    <span><i class="chart-dot chart-drowsy"></i>졸음</span>
+                    <span><i class="chart-dot chart-absence"></i>이탈</span>
+                </div>
+            </div>
+            <div class="report-chart-wrap">{chart_columns}</div>
+        </section>
+        """
+        if chart_points
+        else ""
+    )
 
     return f"""
     <section class="report-shell">
@@ -274,6 +326,8 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
         </div>
 
         <div class="report-summary-grid">{summary_cards}</div>
+
+        {chart_html}
 
         <div class="report-grid">
             <section class="report-card">
