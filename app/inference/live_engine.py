@@ -23,15 +23,19 @@ class SlotInfo:
     is_teacher: bool
     ear: float
     mar: float
-    box_pct: tuple = field(default_factory=lambda: (0.0, 0.0, 0.0, 0.0))  # (x1%, y1%, x2%, y2%) YOLO bbox
-    face_box_pct: tuple = field(default_factory=lambda: ())               # (x1%, y1%, x2%, y2%) FaceMesh face, empty if none
+    box_pct: tuple = field(
+        default_factory=lambda: (0.0, 0.0, 0.0, 0.0)
+    )  # (x1%, y1%, x2%, y2%) YOLO bbox
+    face_box_pct: tuple = field(
+        default_factory=lambda: ()
+    )  # (x1%, y1%, x2%, y2%) FaceMesh face, empty if none
     noface: bool = False
 
 
 @dataclass
 class LiveInferenceResult:
     slots: list[SlotInfo]
-    status: str           # 대표 상태 (DROWSY 우선, 없으면 NORMAL)
+    status: str  # 대표 상태 (DROWSY 우선, 없으면 NORMAL)
     alert: str
     report: str
     debug_text: str
@@ -140,18 +144,27 @@ class LiveZoomEngine:
         for r in records:
             ear = r.get("ear", float("nan"))
             mar = r.get("mar", float("nan"))
-            x1, y1, x2, y2 = r.get("x1", 0), r.get("y1", 0), r.get("x2", 0), r.get("y2", 0)
+            x1, y1, x2, y2 = (
+                r.get("x1", 0),
+                r.get("y1", 0),
+                r.get("x2", 0),
+                r.get("y2", 0),
+            )
             bw, bh = x2 - x1, y2 - y1
             box_pct = (x1 / frame_w, y1 / frame_h, x2 / frame_w, y2 / frame_h)
 
             status = r["final_state"]
             # bbox가 너무 작으면 FaceMesh 결과를 신뢰할 수 없으므로 NORMAL 처리
-            if not bool(r.get("is_teacher", 0)) and (bw < MIN_BBOX_W or bh < MIN_BBOX_H):
+            if not bool(r.get("is_teacher", 0)) and (
+                bw < MIN_BBOX_W or bh < MIN_BBOX_H
+            ):
                 status = "NORMAL"
 
             # NoFace 판정: 자리이탈/화면꺼짐/ABSENT는 얼굴 없는 게 당연하므로 제외
             cls_name = r.get("cls_name", "")
-            is_body_present = cls_name not in ("person_off", "screen_off") and status != "ABSENT"
+            is_body_present = (
+                cls_name not in ("person_off", "screen_off") and status != "ABSENT"
+            )
             noface = is_body_present and bool(r.get("is_noface", False))
 
             # face_box는 썸네일 내부 좌표 → 프레임 절대 좌표로 변환 후 비율화
@@ -161,22 +174,29 @@ class LiveZoomEngine:
                 fb_y1 = y1 + raw_fb[1]
                 fb_x2 = x1 + raw_fb[2]
                 fb_y2 = y1 + raw_fb[3]
-                face_box_pct = (fb_x1 / frame_w, fb_y1 / frame_h, fb_x2 / frame_w, fb_y2 / frame_h)
+                face_box_pct = (
+                    fb_x1 / frame_w,
+                    fb_y1 / frame_h,
+                    fb_x2 / frame_w,
+                    fb_y2 / frame_h,
+                )
             else:
                 face_box_pct = ()
 
-            slots.append(SlotInfo(
-                slot_id=r["slot_id"],
-                name=r["name"] or f"학생 {r['slot_id']}",
-                status=status,
-                class_name=r["cls_name"],
-                is_teacher=bool(r.get("is_teacher", 0)),
-                ear=ear if not (isinstance(ear, float) and np.isnan(ear)) else 0.0,
-                mar=mar if not (isinstance(mar, float) and np.isnan(mar)) else 0.0,
-                box_pct=box_pct,
-                face_box_pct=face_box_pct,
-                noface=noface,
-            ))
+            slots.append(
+                SlotInfo(
+                    slot_id=r["slot_id"],
+                    name=r["name"] or f"학생 {r['slot_id']}",
+                    status=status,
+                    class_name=r["cls_name"],
+                    is_teacher=bool(r.get("is_teacher", 0)),
+                    ear=ear if not (isinstance(ear, float) and np.isnan(ear)) else 0.0,
+                    mar=mar if not (isinstance(mar, float) and np.isnan(mar)) else 0.0,
+                    box_pct=box_pct,
+                    face_box_pct=face_box_pct,
+                    noface=noface,
+                )
+            )
 
         # 대표 상태: DROWSY > YAWN > ABSENT > NORMAL
         priority = {"DROWSY": 3, "YAWN": 2, "ABSENT": 1, "NORMAL": 0}
@@ -200,15 +220,16 @@ class LiveZoomEngine:
         drowsy_names = [s.name for s in student_slots if s.status == "DROWSY"]
         absent_names = [s.name for s in student_slots if s.status == "ABSENT"]
 
-        report_lines = [f"총 프레임: {self.frame_count}", f"감지된 슬롯: {len(slots)}명"]
+        report_lines = [
+            f"총 프레임: {self.frame_count}",
+            f"감지된 슬롯: {len(slots)}명",
+        ]
         if drowsy_names:
             report_lines.append(f"졸음: {', '.join(drowsy_names)}")
         if absent_names:
             report_lines.append(f"이탈: {', '.join(absent_names)}")
 
-        slot_debug = " | ".join(
-            f"[{s.slot_id}]{s.name}={s.status}" for s in slots
-        )
+        slot_debug = " | ".join(f"[{s.slot_id}]{s.name}={s.status}" for s in slots)
         debug_text = f"frame={self.frame_count} slots={len(slots)} {slot_debug}"
 
         return LiveInferenceResult(
