@@ -6,7 +6,7 @@ ASSETS_DIR = BASE_DIR / "assets"
 
 # 발표용 배경 미디어
 # 기본값은 mp4 영상으로 두고, 필요하면 png/jpg로 바꿔도 동작하도록 구성
-STAGE_MEDIA_PATH = ASSETS_DIR / "demo_bg.mp4" # detault: demo_bg.png / demo_bg.mp4
+STAGE_MEDIA_PATH = ASSETS_DIR / "demo_bg.mp4"  # detault: demo_bg.png / demo_bg.mp4
 
 # 발표용 배경 원본 해상도
 BG_W = 1920
@@ -21,5 +21,4 @@ SLOT_H = 180
 APP_TITLE = "온라인 수업 졸음 감지 시스템"
 APP_SUBTITLE = "실시간 AI 기반 수강생 상태 모니터링 데모"
 
-# YOLO_CHECKPOINT_PATH = BASE_DIR / "checkpoint" / "yolo11n" / "weights" / "best.pt"
-YOLO_CHECKPOINT_PATH = "/Volumes/T7/Dataset/CV 과제 2 - 졸음 감지 및 이탈 탐지 시스템/yolov11n_best.pt"
+YOLO_CHECKPOINT_PATH = BASE_DIR / "checkpoint" / "yolo11n" / "weights" / "best.pt"

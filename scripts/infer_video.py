@@ -17,6 +17,7 @@ Zoom 썸네일 영상 졸음 감지 파이프라인.
     화면 시각화       → src/visual/annotator.py
     영상 입출력       → src/utils/video_conversion.py
 """
+
 import argparse
 import csv
 import sys
@@ -65,15 +66,15 @@ from src.visual.annotator import (
 # ─────────────────────────────────────────────────────────────────────────────
 
 BOX_COLORS = {
-    "person_on":  (60, 220, 60),
+    "person_on": (60, 220, 60),
     "person_off": (0, 180, 255),
     "screen_off": (0, 100, 255),
-    "unknown":    (180, 180, 180),
+    "unknown": (180, 180, 180),
 }
 STATE_COLORS = {
     "NORMAL": (70, 220, 70),
-    "DROWSY": (0, 0, 255),      # 빨간색 (BGR)
-    "YAWN":   (0, 128, 255),    # 주황색 (BGR)
+    "DROWSY": (0, 0, 255),  # 빨간색 (BGR)
+    "YAWN": (0, 128, 255),  # 주황색 (BGR)
     "ABSENT": (0, 165, 255),
     "IGNORE": (160, 160, 160),
 }
@@ -83,6 +84,7 @@ STATE_COLORS = {
 # PipelineConfig
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class PipelineConfig:
     """
@@ -91,28 +93,31 @@ class PipelineConfig:
     각 서브모듈 파라미터를 한 곳에서 관리합니다.
     세부 졸음 임계값은 drowsiness 필드(DrowsinessConfig)에서 조정하세요.
     """
+
     # 영상 범위
     start_sec: float = 0.0
     end_sec: Optional[float] = None
     target_fps: float = 7.0
 
     # YOLO
-    yolo_imgsz: int = 640 # 640 Test > 960 > 1280
+    yolo_imgsz: int = 640  # 640 Test > 960 > 1280
     yolo_conf: float = 0.10
     yolo_iou: float = 0.45
-    yolo_max_det: int = 5 # 20 -> 5 수정
+    yolo_max_det: int = 5  # 20 -> 5 수정
 
     # 슬롯 트래킹
-    slot_max_misses: int = 40       # 슬롯 삭제까지 허용 miss 프레임 수
-    slot_match_dist: float = 0.40   # 슬롯-탐지 매칭 최대 정규화 거리
-    row_group_thresh: int = 90      # 같은 행으로 묶는 y 거리 (px)
+    slot_max_miss_sec: float = (
+        3.0  # 슬롯 삭제까지 허용 miss 시간 (초) — fps에 맞게 자동 계산
+    )
+    slot_match_dist: float = 0.40  # 슬롯-탐지 매칭 최대 정규화 거리
+    row_group_thresh: int = 90  # 같은 행으로 묶는 y 거리 (px)
 
-    ocr_retry_interval: int = 90    # 일반 OCR 재시도 간격 (프레임)
-    ocr_fast_interval: int = 20     # 레이아웃 변경 직후 빠른 OCR 간격
-    name_vote_maxlen: int = 12      # 이름 투표 기록 최대 길이
-    ocr_lock_min_votes: int = 3     # 이름 확정 최소 득표 수
+    ocr_retry_interval: int = 90  # 일반 OCR 재시도 간격 (프레임)
+    ocr_fast_interval: int = 20  # 레이아웃 변경 직후 빠른 OCR 간격
+    name_vote_maxlen: int = 12  # 이름 투표 기록 최대 길이
+    ocr_lock_min_votes: int = 3  # 이름 확정 최소 득표 수
     ocr_name_conf_lock: float = 0.70  # 이 신뢰도 이상이면 OCR 재시도 안 함
-    layout_boost_sec: float = 3.0   # 레이아웃 변경 후 빠른 OCR 지속 시간
+    layout_boost_sec: float = 3.0  # 레이아웃 변경 후 빠른 OCR 지속 시간
     layout_change_cooldown: float = 2.0  # 레이아웃 변경 감지 최소 간격 (초)
     teacher_names: list = field(default_factory=list)  # 강사 이름 목록
 
@@ -121,7 +126,7 @@ class PipelineConfig:
     use_clahe: bool = True
 
     # No Face: 연속 N프레임 이상 미검출 시 NOFACE 확정 (순간 가림 필터링)
-    noface_hold_frames: int = 15    # ≈1.5초 @ 10fps
+    noface_hold_frames: int = 15  # ≈1.5초 @ 10fps
     # NoFace 폴백: 랜드마크 소실 시 최근 DROWSY 이력 참조 윈도우
     drowsy_noface_window_sec: float = 3.0
     # NoFace 폴백 상한: 연속 NoFace 프레임이 이 값을 초과하면 DROWSY fallback 중단
@@ -130,8 +135,8 @@ class PipelineConfig:
 
     # Pose fallback (FaceMesh lm_ok=False일 때 PoseDetector로 고개 숙임 감지)
     use_pose_fallback: bool = False
-    pose_conf: float = 0.5          # PoseDetector 검출 최소 신뢰도
-    pose_consec_frames: int = 21    # 연속 감지 프레임 수 (≈3초 @ 7fps)
+    pose_conf: float = 0.5  # PoseDetector 검출 최소 신뢰도
+    pose_consec_frames: int = 21  # 연속 감지 프레임 수 (≈3초 @ 7fps)
 
     # 졸음 감지 (세부 임계값)
     drowsiness: DrowsinessConfig = field(default_factory=DrowsinessConfig)
@@ -148,6 +153,7 @@ class PipelineConfig:
 # ─────────────────────────────────────────────────────────────────────────────
 # ZoomPipeline
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class ZoomPipeline:
     """
@@ -179,13 +185,17 @@ class ZoomPipeline:
         self._slots: dict[int, SlotState] = {}
         self._next_slot_id = 1
         self._prev_layout_summary: Optional[dict] = None
-        self._last_layout_change_frame = -(10 ** 9)
+        self._last_layout_change_frame = -(10**9)
         self._layout_boost_until = -1
-        self._pose_consec: dict[int, int] = {}  # slot_id → 연속 pose_head_down 프레임 수
+        self._pose_consec: dict[int, int] = (
+            {}
+        )  # slot_id → 연속 pose_head_down 프레임 수
 
         self._ocr_executor = ThreadPoolExecutor(max_workers=1)
         self._ocr_futures: dict[int, Future] = {}  # slot_id → 진행 중인 OCR Future
-        self._face_executor = ThreadPoolExecutor(max_workers=self._cfg.yolo_max_det or 4)
+        self._face_executor = ThreadPoolExecutor(
+            max_workers=self._cfg.yolo_max_det or 4
+        )
 
     # ── 컨텍스트 매니저 ───────────────────────────────────────────────────────
 
@@ -248,7 +258,9 @@ class ZoomPipeline:
         """
         cfg = self._cfg
         ts = frame_idx / max(fps, 1e-6)
-        fps_eff = fps_effective if fps_effective is not None else fps  # threshold 계산용
+        fps_eff = (
+            fps_effective if fps_effective is not None else fps
+        )  # threshold 계산용
         frame_h, frame_w = frame.shape[:2]
 
         # ── 완료된 OCR 결과 반영 ───────────────────────────────────────────────
@@ -301,7 +313,7 @@ class ZoomPipeline:
 
         # 오래된 슬롯 삭제
         for sid in list(self._slots.keys()):
-            if self._slots[sid].misses > cfg.slot_max_misses:
+            if self._slots[sid].misses > int(cfg.slot_max_miss_sec * fps):
                 sl = self._slots[sid]
                 if sl.face_detector is not None:
                     sl.face_detector.close()
@@ -315,7 +327,12 @@ class ZoomPipeline:
         cv2.putText(
             canvas,
             f"frame={frame_idx} t={ts:.1f}s dets={len(dets)} slots={len(matches)}",
-            (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (220, 220, 220), 1, cv2.LINE_AA,
+            (8, 22),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.48,
+            (220, 220, 220),
+            1,
+            cv2.LINE_AA,
         )
 
         # ── 슬롯별 처리 ───────────────────────────────────────────────────────
@@ -325,7 +342,7 @@ class ZoomPipeline:
         # [B안] Phase 1: bbox 안정화 + crop (순차, 빠름)
         slot_prep: list[tuple] = []  # (sid, di, sl, det, thumb)
         for sid, di in sorted_matches:
-            sl  = self._slots[sid]
+            sl = self._slots[sid]
             det = dets[di]
 
             det["box"] = tuple(map(int, stabilize_bbox(sl.box_smoothed, det["box"])))
@@ -395,8 +412,12 @@ class ZoomPipeline:
                 self._pose_consec[sid] = max(0, self._pose_consec.get(sid, 0) - 1)
 
             # 모션
-            curr_gray = cv2.cvtColor(thumb, cv2.COLOR_BGR2GRAY) if thumb.size > 0 else None
-            motion = compute_motion(sl.prev_gray, curr_gray, face_result.face_box, thumb.shape)
+            curr_gray = (
+                cv2.cvtColor(thumb, cv2.COLOR_BGR2GRAY) if thumb.size > 0 else None
+            )
+            motion = compute_motion(
+                sl.prev_gray, curr_gray, face_result.face_box, thumb.shape
+            )
             sl.prev_gray = curr_gray
 
             # 졸음 상태 업데이트
@@ -415,7 +436,8 @@ class ZoomPipeline:
             # - 이력 없음                      → NOFACE 표시
             # is_noface(15프레임 확정)와 무관하게 얼굴이 사라진 첫 프레임부터 적용
             face_gone = (
-                not face_result.lm_ok and not face_result.face_ok
+                not face_result.lm_ok
+                and not face_result.face_ok
                 and det["cls"] not in ("person_off", "screen_off")
             )
             display_noface = is_noface
@@ -434,17 +456,27 @@ class ZoomPipeline:
                     display_noface = False
 
             sl.total_frames += 1
-            if final_state == "DROWSY":   sl.frames_drowsy += 1
-            elif final_state == "YAWN":   sl.frames_yawn   += 1
-            elif final_state == "ABSENT": sl.frames_absent += 1
-            else:                         sl.frames_normal += 1
+            if final_state == "DROWSY":
+                sl.frames_drowsy += 1
+            elif final_state == "YAWN":
+                sl.frames_yawn += 1
+            elif final_state == "ABSENT":
+                sl.frames_absent += 1
+            else:
+                sl.frames_normal += 1
 
             # OCR (필요할 때만)
             self._try_ocr(sl, thumb, frame_idx)
 
             # 시각화
             draw_slot_bbox(
-                canvas, sid, det["box"], det["cls"], final_state, BOX_COLORS, STATE_COLORS,
+                canvas,
+                sid,
+                det["box"],
+                det["cls"],
+                final_state,
+                BOX_COLORS,
+                STATE_COLORS,
                 no_face=display_noface,
             )
             draw_face_box(canvas, (x1, y1), face_result.face_box)
@@ -457,69 +489,83 @@ class ZoomPipeline:
             iy = max(0, min(y1, canvas.shape[0] - ibox_h))
 
             draw_info_box(
-                canvas, sl, face_result, (ix, iy),
-                final_state, STATE_COLORS,
+                canvas,
+                sl,
+                face_result,
+                (ix, iy),
+                final_state,
+                STATE_COLORS,
                 box_w=cfg.info_box_w - 4,
                 is_noface=display_noface,
             )
 
-            records.append({
-                "frame_idx":     frame_idx,
-                "timestamp_s":   round(ts, 4),
-                "slot_id":       sid,
-                "name":          sl.name_final,
-                "is_teacher":    int(sl.is_teacher),
-                "final_state":   final_state,
-                "raw_state":     raw_state,
-                "drowsy_reason": drowsy_reason,
-                "cls_name":      det["cls"],
-                "cls_conf":      round(det["conf"], 4),
-                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                "face_box":      face_result.face_box,
-                "lm_ok":         int(face_result.lm_ok),
-                "face_ok":       int(face_result.face_ok),
-                "ear":           face_result.ear,
-                "mar":           face_result.mar,
-                "pitch_like":    face_result.pitch_like,
-                "tilt_deg":      face_result.tilt_deg,
-                "face_center_y": face_result.face_center_y,
-                "motion":        motion,
-                "ear_low_f":     sl.ear_low_frames,
-                "face_low_f":    sl.face_low_frames,
-                "is_noface":     display_noface,
-            })
+            records.append(
+                {
+                    "frame_idx": frame_idx,
+                    "timestamp_s": round(ts, 4),
+                    "slot_id": sid,
+                    "name": sl.name_final,
+                    "is_teacher": int(sl.is_teacher),
+                    "final_state": final_state,
+                    "raw_state": raw_state,
+                    "drowsy_reason": drowsy_reason,
+                    "cls_name": det["cls"],
+                    "cls_conf": round(det["conf"], 4),
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "face_box": face_result.face_box,
+                    "lm_ok": int(face_result.lm_ok),
+                    "face_ok": int(face_result.face_ok),
+                    "ear": face_result.ear,
+                    "mar": face_result.mar,
+                    "pitch_like": face_result.pitch_like,
+                    "tilt_deg": face_result.tilt_deg,
+                    "face_center_y": face_result.face_center_y,
+                    "motion": motion,
+                    "ear_low_f": sl.ear_low_frames,
+                    "face_low_f": sl.face_low_frames,
+                    "is_noface": display_noface,
+                }
+            )
 
         # ── 미탐지 슬롯(화면 이탈) → ABSENT 레코드 추가 ──────────────────────────
         for sid in um_slots:
             sl = self._slots.get(sid)
-            if sl is None or sl.misses > cfg.slot_max_misses:
+            if sl is None or sl.misses > int(cfg.slot_max_miss_sec * fps):
                 continue
             x1, y1, x2, y2 = sl.box if sl.box else (0, 0, 0, 0)
-            records.append({
-                "frame_idx":     frame_idx,
-                "timestamp_s":   round(ts, 4),
-                "slot_id":       sid,
-                "name":          sl.name_final,
-                "is_teacher":    int(sl.is_teacher),
-                "final_state":   "ABSENT",
-                "raw_state":     "ABSENT",
-                "drowsy_reason": "absent_unmatched",
-                "cls_name":      "person_off",
-                "cls_conf":      0.0,
-                "x1": x1, "y1": y1, "x2": x2, "y2": y2,
-                "face_box":      None,
-                "lm_ok":         0,
-                "face_ok":       0,
-                "ear":           float("nan"),
-                "mar":           float("nan"),
-                "pitch_like":    float("nan"),
-                "tilt_deg":      float("nan"),
-                "face_center_y": float("nan"),
-                "motion":        0.0,
-                "ear_low_f":     sl.ear_low_frames,
-                "face_low_f":    sl.face_low_frames,
-                "is_noface":     True,
-            })
+            records.append(
+                {
+                    "frame_idx": frame_idx,
+                    "timestamp_s": round(ts, 4),
+                    "slot_id": sid,
+                    "name": sl.name_final,
+                    "is_teacher": int(sl.is_teacher),
+                    "final_state": "ABSENT",
+                    "raw_state": "ABSENT",
+                    "drowsy_reason": "absent_unmatched",
+                    "cls_name": "person_off",
+                    "cls_conf": 0.0,
+                    "x1": x1,
+                    "y1": y1,
+                    "x2": x2,
+                    "y2": y2,
+                    "face_box": None,
+                    "lm_ok": 0,
+                    "face_ok": 0,
+                    "ear": float("nan"),
+                    "mar": float("nan"),
+                    "pitch_like": float("nan"),
+                    "tilt_deg": float("nan"),
+                    "face_center_y": float("nan"),
+                    "motion": 0.0,
+                    "ear_low_f": sl.ear_low_frames,
+                    "face_low_f": sl.face_low_frames,
+                    "is_noface": True,
+                }
+            )
 
         return canvas, records
 
@@ -530,19 +576,21 @@ class ZoomPipeline:
         rows = []
         for sid in sorted(self._slots.keys()):
             sl = self._slots[sid]
-            rows.append({
-                "slot_id":       sid,
-                "name":          sl.name_final,
-                "name_conf":     round(sl.name_conf, 4),
-                "total_frames":  sl.total_frames,
-                "frames_normal": sl.frames_normal,
-                "frames_drowsy": sl.frames_drowsy,
-                "frames_yawn":   sl.frames_yawn,
-                "frames_absent": sl.frames_absent,
-                "bl_ear":        sl.bl_ear,
-                "bl_pitch":      sl.bl_pitch,
-                "bl_center_y":   sl.bl_center_y,
-            })
+            rows.append(
+                {
+                    "slot_id": sid,
+                    "name": sl.name_final,
+                    "name_conf": round(sl.name_conf, 4),
+                    "total_frames": sl.total_frames,
+                    "frames_normal": sl.frames_normal,
+                    "frames_drowsy": sl.frames_drowsy,
+                    "frames_yawn": sl.frames_yawn,
+                    "frames_absent": sl.frames_absent,
+                    "bl_ear": sl.bl_ear,
+                    "bl_pitch": sl.bl_pitch,
+                    "bl_center_y": sl.bl_center_y,
+                }
+            )
         return rows
 
     # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
@@ -565,11 +613,13 @@ class ZoomPipeline:
                 results.boxes.cls.cpu().numpy().astype(int),
             ):
                 x1, y1, x2, y2 = map(int, box.tolist())
-                dets.append({
-                    "box":  (x1, y1, x2, y2),
-                    "conf": float(conf),
-                    "cls":  results.names.get(int(cls_id), str(cls_id)),
-                })
+                dets.append(
+                    {
+                        "box": (x1, y1, x2, y2),
+                        "conf": float(conf),
+                        "cls": results.names.get(int(cls_id), str(cls_id)),
+                    }
+                )
         return dets
 
     def _collect_ocr_results(self) -> None:
@@ -588,12 +638,14 @@ class ZoomPipeline:
             if name:
                 sl.name_votes.append(name)
                 if len(sl.name_votes) > cfg.name_vote_maxlen:
-                    sl.name_votes = sl.name_votes[-cfg.name_vote_maxlen:]
+                    sl.name_votes = sl.name_votes[-cfg.name_vote_maxlen :]
                 cnt = Counter(sl.name_votes)
                 best, votes = cnt.most_common(1)[0]
-                if votes >= cfg.ocr_lock_min_votes or (votes >= 2 and not sl.name_final):
+                if votes >= cfg.ocr_lock_min_votes or (
+                    votes >= 2 and not sl.name_final
+                ):
                     sl.name_final = best
-                    sl.name_conf  = float(votes / len(sl.name_votes))
+                    sl.name_conf = float(votes / len(sl.name_votes))
                     sl.is_teacher = self._ocr.is_teacher(sl.name_final)
 
     def _try_ocr(self, sl: SlotState, thumb: np.ndarray, frame_idx: int) -> None:
@@ -607,9 +659,8 @@ class ZoomPipeline:
             if frame_idx <= self._layout_boost_until
             else cfg.ocr_retry_interval
         )
-        need_ocr = (
-            (not sl.name_final or sl.name_conf < cfg.ocr_name_conf_lock)
-            and (frame_idx - sl.last_ocr_frame >= ocr_interval)
+        need_ocr = (not sl.name_final or sl.name_conf < cfg.ocr_name_conf_lock) and (
+            frame_idx - sl.last_ocr_frame >= ocr_interval
         )
         if not need_ocr:
             return
@@ -622,14 +673,17 @@ class ZoomPipeline:
     def _crop(img: np.ndarray, box: tuple) -> np.ndarray:
         h, w = img.shape[:2]
         x1, y1, x2, y2 = box
-        x1 = max(0, min(int(x1), w - 1)); y1 = max(0, min(int(y1), h - 1))
-        x2 = max(x1 + 1, min(int(x2), w)); y2 = max(y1 + 1, min(int(y2), h))
+        x1 = max(0, min(int(x1), w - 1))
+        y1 = max(0, min(int(y1), h - 1))
+        x2 = max(x1 + 1, min(int(x2), w))
+        y2 = max(y1 + 1, min(int(y2), h))
         return img[y1:y2, x1:x2].copy()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 통합 실행 함수 (Jupyter/Script 호출용)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def run_inference(
     input_path: str | Path = "data/video/TestVideo2.mp4",
@@ -647,7 +701,7 @@ def run_inference(
 ):
     """
     졸음 감지 파이프라인을 실행합니다.
-    
+
     Args:
         input_path:    입력 영상 경로
         checkpoint:    YOLO 모델(.pt) 경로
@@ -659,32 +713,33 @@ def run_inference(
         end_sec:       분석 종료 지점(초)
     """
     load_env()
-    
+
     # 경로 처리 (OpenCV는 문자열 경로를 선호합니다)
     checkpoint_str = str(checkpoint)
     input_str = str(input_path)
     output_str = str(output_path)
-    
+
     output_path = Path(output_path)
     if output_path.is_dir():
         # 만약 폴더 경로가 들어왔다면 기본 파일명을 붙여줍니다.
         output_path = output_path / "result.mp4"
         output_str = str(output_path)
-    
+
     output_dir = output_path.parent
     output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     frame_csv = output_dir / f"{output_path.stem}_frames.csv"
     track_csv = output_dir / f"{output_path.stem}_summary.csv"
 
     if not Path(checkpoint).exists():
         print(f"[경고] YOLO 체크포인트 없음: {checkpoint}")
-    
+
     assert Path(input_path).exists(), f"입력 영상 없음: {input_path}"
 
     # device 자동 감지: cuda > mps > cpu 순
     if device is None:
         import torch
+
         if torch.cuda.is_available():
             device = "cuda"
         elif torch.backends.mps.is_available():
@@ -693,7 +748,9 @@ def run_inference(
             device = "cpu"
     if yolo_model is None:
         if use_onnx:
-            load_path = str(onnx_path) if onnx_path else str(checkpoint).replace(".pt", ".onnx")
+            load_path = (
+                str(onnx_path) if onnx_path else str(checkpoint).replace(".pt", ".onnx")
+            )
             yolo_model = YOLO(load_path)
             print(f"[device] cpu (ONNX Runtime)")
         else:
@@ -715,20 +772,32 @@ def run_inference(
     all_records = []
     track_summary = []
 
-    with VideoReader(input_str, start_sec=config.start_sec,
-                     end_sec=config.end_sec, target_fps=config.target_fps) as reader:
+    with VideoReader(
+        input_str,
+        start_sec=config.start_sec,
+        end_sec=config.end_sec,
+        target_fps=config.target_fps,
+    ) as reader:
 
         canvas_w = reader.width + config.info_box_w
 
-        with VideoWriter(output_str, reader.fps_effective,
-                         canvas_w, reader.height) as writer:
+        with VideoWriter(
+            output_str, reader.fps_effective, canvas_w, reader.height
+        ) as writer:
 
             with ZoomPipeline(yolo_model, config) as pipeline:
                 total = len(reader)
-                pbar = tqdm(reader, total=total, desc=f"분석 중 ({Path(input_path).name})", unit="frame")
-                
+                pbar = tqdm(
+                    reader,
+                    total=total,
+                    desc=f"분석 중 ({Path(input_path).name})",
+                    unit="frame",
+                )
+
                 for frame_idx, ts, frame in pbar:
-                    canvas, records = pipeline.process_frame(frame, frame_idx, reader.fps, reader.fps_effective)
+                    canvas, records = pipeline.process_frame(
+                        frame, frame_idx, reader.fps, reader.fps_effective
+                    )
                     writer.write(canvas)
                     all_records.extend(records)
                     pbar.set_postfix({"ts": f"{ts:.1f}s", "dets": len(records)})
@@ -760,12 +829,23 @@ def run_inference(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="졸음 감지 파이프라인 실행")
-    parser.add_argument("--checkpoint", type=str, default="checkpoint/yolo11n/best.pt", help="YOLO 모델 경로")
+    parser.add_argument(
+        "--checkpoint",
+        type=str,
+        default="checkpoint/yolo11n/best.pt",
+        help="YOLO 모델 경로",
+    )
     parser.add_argument("--input", type=str, required=True, help="입력 영상 경로")
-    parser.add_argument("--output", type=str, default="outputs/result.mp4", help="결과 영상 저장 경로")
+    parser.add_argument(
+        "--output", type=str, default="outputs/result.mp4", help="결과 영상 저장 경로"
+    )
     parser.add_argument("--fps", type=float, default=7.0, help="분석 목표 FPS")
-    parser.add_argument("--use_fallback", action="store_true", help="Pose fallback 활성화 여부")
-    parser.add_argument("--teacher", type=str, default="강경미", help="강사 이름 (쉼표로 구분)")
+    parser.add_argument(
+        "--use_fallback", action="store_true", help="Pose fallback 활성화 여부"
+    )
+    parser.add_argument(
+        "--teacher", type=str, default="강경미", help="강사 이름 (쉼표로 구분)"
+    )
 
     args = parser.parse_args()
 
