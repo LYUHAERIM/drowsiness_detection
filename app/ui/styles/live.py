@@ -80,6 +80,35 @@ def build_live_css() -> str:
             background: transparent !important;
         }}
 
+        #debug-panel-wrap {{
+            width: 100% !important;
+            max-width: 100% !important;
+            max-height: none !important;
+            overflow: hidden !important;
+        }}
+
+        #debug-panel-wrap .gradio-accordion,
+        #debug-panel-wrap .gradio-accordion > div,
+        #debug-panel-wrap .gradio-accordion .wrap,
+        #debug-panel-wrap .gradio-accordion .content,
+        #debug-panel-wrap > .gr-block,
+        #debug-panel-wrap .gr-block,
+        #debug-panel-wrap .gr-form,
+        #debug-panel-wrap .form,
+        #debug-panel-wrap .wrap,
+        #debug-panel-wrap .content {{
+            width: 100% !important;
+            max-width: 100% !important;
+            max-height: none !important;
+            overflow: hidden !important;
+        }}
+
+        #debug-panel-wrap * {{
+            max-width: 100% !important;
+            overflow-x: hidden !important;
+            box-sizing: border-box !important;
+        }}
+
         #live-view.hide,
         #live-view.hidden,
         #live-view .hide,
