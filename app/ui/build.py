@@ -199,11 +199,6 @@ def create_demo() -> gr.Blocks:
                 elem_id="home-shell-inner",
                 elem_classes=["home-shell-inner"],
             ):
-                gr.HTML(
-                    "<div class='home-top-spacer' aria-hidden='true'></div>",
-                    elem_id="home-top-spacer",
-                    elem_classes=["home-top-spacer-wrap"],
-                )
 
                 gr.HTML(
                     build_home_hero_html(),
@@ -244,7 +239,7 @@ def create_demo() -> gr.Blocks:
                     elem_classes=["shell-header-wrap"],
                 )
 
-                with gr.Row(elem_classes=["live-layout"]):
+                with gr.Column(elem_classes=["live-layout"]):
                     with gr.Column(scale=7, elem_classes=["live-stage-column"]):
                         gr.HTML(
                             build_stage_html(stage_media_url, stage_media_kind),
@@ -300,7 +295,7 @@ def create_demo() -> gr.Blocks:
                     elem_classes=["shell-header-wrap"],
                 )
 
-                with gr.Row(elem_classes=["upload-layout"]):
+                with gr.Column(elem_classes=["upload-layout"]):
                     with gr.Column(scale=6, elem_classes=["upload-main-column"]):
                         with gr.Column(elem_classes=["upload-main-stack"]):
                             gr.HTML(

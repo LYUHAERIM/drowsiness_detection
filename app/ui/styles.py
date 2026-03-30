@@ -283,6 +283,7 @@ def build_css() -> str:
     #home-view .gradio-html,
     #home-view .gr-row,
     #home-view .gr-column,
+    #home-view .column,
     #home-shell-inner,
     #home-shell-inner > .gr-block,
     #home-shell-inner > .gr-block > .gr-block,
@@ -292,13 +293,15 @@ def build_css() -> str:
     #home-shell-inner .block,
     #home-shell-inner .gradio-html,
     #home-shell-inner .gr-row,
-    #home-shell-inner .gr-column {{
+    #home-shell-inner .gr-column,
+    #home-shell-inner .column {{
         background: #0a0e1a !important;
         border: none !important;
         box-shadow: none !important;
         margin: 0 !important;
         padding: 0 !important;
         min-height: 0 !important;
+        gap: 0 !important;
     }}
 
     #home-view,
@@ -309,7 +312,7 @@ def build_css() -> str:
     }}
 
     #home-shell-inner {{
-        padding-top: 20px !important;
+        padding-top: 0px !important;
     }}
 
     #home-top-spacer,
@@ -326,7 +329,7 @@ def build_css() -> str:
     }}
 
     .home-top-spacer {{
-        height: 20px;
+        height: 0px;
         width: 100%;
         display: block;
     }}
@@ -753,13 +756,33 @@ def build_css() -> str:
     .live-layout {{
         display: grid !important;
         grid-template-columns: minmax(0, 1.5fr) minmax(360px, 0.9fr);
-        align-items: start;
+        align-items: start !important;
+        margin: 0 !important;
+        padding: 0 28px 28px !important;
+        min-height: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }}
+
+    #live-view .live-layout > .gr-block {{
+        min-width: 0 !important;
     }}
 
     .upload-layout {{
         display: grid !important;
         grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr);
         align-items: start;
+        margin: 0 !important;
+        padding: 0 28px 28px !important;
+        min-height: 0 !important;
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+    }}
+
+    #upload-view .upload-layout > .gr-block {{
+        min-width: 0 !important;
     }}
 
     .report-actions {{
