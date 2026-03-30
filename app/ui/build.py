@@ -116,12 +116,54 @@ def create_demo() -> gr.Blocks:
     )
     initial_report_data = build_empty_report_data()
 
+    live_card_html = build_home_card_html(
+        card_id="home-live-card",
+        tone="blue",
+        icon="🎥",
+        title="실시간 분석",
+        subtitle="Realtime Mode",
+        description="2분 데모 영상에 내 웹캠을 오버레이하여 실시간 분석",
+        features=[
+            ("실시간 상태 표시", "졸음, 이탈 상태를 즉시 감지", "⚡"),
+            ("웹캠 오버레이", "데모 영상에 나를 합성하여 분석", "🎥"),
+            ("빠른 데모 체험", "2분 안에 기능 확인", "🕒"),
+        ],
+        button_label="실시간 분석 시작",
+        target_id="nav-live-btn",
+    )
+
+    upload_card_html = build_home_card_html(
+        card_id="home-upload-card",
+        tone="violet",
+        icon="📤",
+        title="녹화 영상 분석",
+        subtitle="Upload Mode",
+        description="긴 수업 영상을 업로드하여 분석 리포트 생성",
+        features=[
+            ("영상 업로드", "1시간 이상의 긴 수업 영상 지원", "📤"),
+            ("상세 리포트", "시간대별 분석 그래프 및 통계", "📊"),
+            ("비실시간 분석", "완료 후 종합 리포트 제공", "🕒"),
+        ],
+        button_label="영상 업로드하기",
+        target_id="nav-upload-btn",
+    )
+
+    home_cards_grid_html = f"""
+    <div id="home-card-grid" class="home-card-grid">
+        <div class="home-card-item home-card-item-live">
+            {live_card_html}
+        </div>
+        <div class="home-card-item home-card-item-upload">
+            {upload_card_html}
+        </div>
+    </div>
+    """
+
     with gr.Blocks(
         elem_id="demo-root",
         elem_classes=["demo-root", "figma-app-root"],
     ) as demo:
         report_state = gr.State(initial_report_data)
-        gr.HTML('<div id="app-root">')
 
         nav_live_btn = gr.Button(
             "", elem_id="nav-live-btn", elem_classes=["bridge-hidden"]
@@ -153,69 +195,33 @@ def create_demo() -> gr.Blocks:
             elem_id="home-view",
             elem_classes=["view-shell", "home-shell"],
         ) as home_view:
-            with gr.Column(elem_classes=["home-shell-inner"]):
-                gr.HTML(build_home_hero_html(), elem_classes=["home-hero-wrap"])
+            with gr.Column(
+                elem_id="home-shell-inner",
+                elem_classes=["home-shell-inner"],
+            ):
+                gr.HTML(
+                    "<div class='home-top-spacer' aria-hidden='true'></div>",
+                    elem_id="home-top-spacer",
+                    elem_classes=["home-top-spacer-wrap"],
+                )
 
-                with gr.Row(elem_classes=["home-card-grid"]):
-                    with gr.Column(
-                        elem_classes=["home-card-col", "home-card-col-left"]
-                    ):
-                        gr.HTML(
-                            build_home_card_html(
-                                tone="blue",
-                                icon="🎥",
-                                title="실시간 분석",
-                                subtitle="Realtime Mode",
-                                description="2분 데모 영상에 내 웹캠을 오버레이하여 실시간 분석",
-                                features=[
-                                    (
-                                        "실시간 상태 표시",
-                                        "졸음, 이탈 상태를 즉시 감지",
-                                        "⚡",
-                                    ),
-                                    (
-                                        "웹캠 오버레이",
-                                        "데모 영상에 나를 합성하여 분석",
-                                        "🎥",
-                                    ),
-                                    ("빠른 데모 체험", "2분 안에 기능 확인", "🕒"),
-                                ],
-                                button_label="실시간 분석 시작",
-                                target_id="nav-live-btn",
-                            ),
-                            elem_classes=["home-card-html"],
-                        )
+                gr.HTML(
+                    build_home_hero_html(),
+                    elem_id="home-hero-block",
+                    elem_classes=["home-hero-wrap", "home-html-wrap"],
+                )
 
-                    with gr.Column(
-                        elem_classes=["home-card-col", "home-card-col-right"]
-                    ):
-                        gr.HTML(
-                            build_home_card_html(
-                                tone="violet",
-                                icon="📤",
-                                title="녹화 영상 분석",
-                                subtitle="Upload Mode",
-                                description="긴 수업 영상을 업로드하여 분석 리포트 생성",
-                                features=[
-                                    (
-                                        "영상 업로드",
-                                        "1시간 이상의 긴 수업 영상 지원",
-                                        "📤",
-                                    ),
-                                    (
-                                        "상세 리포트",
-                                        "시간대별 분석 그래프 및 통계",
-                                        "📊",
-                                    ),
-                                    ("비실시간 분석", "완료 후 종합 리포트 제공", "🕒"),
-                                ],
-                                button_label="영상 업로드하기",
-                                target_id="nav-upload-btn",
-                            ),
-                            elem_classes=["home-card-html"],
-                        )
+                gr.HTML(
+                    home_cards_grid_html,
+                    elem_id="home-card-grid-block",
+                    elem_classes=["home-card-grid-wrap", "home-html-wrap"],
+                )
 
-                gr.HTML(build_home_footer_html(), elem_classes=["home-footer-wrap"])
+                gr.HTML(
+                    build_home_footer_html(),
+                    elem_id="home-footer-block",
+                    elem_classes=["home-footer-wrap", "home-html-wrap"],
+                )
 
         with gr.Group(
             visible=False,
@@ -571,8 +577,6 @@ def create_demo() -> gr.Blocks:
                 upload_status,
             ],
         )
-
-        gr.HTML("</div>")
 
     demo.demo_css = css
     demo.demo_head = head

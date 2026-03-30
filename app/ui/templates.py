@@ -53,7 +53,7 @@ def build_shell_header_html(
 
 def build_home_hero_html() -> str:
     return f"""
-    <section class="home-hero">
+    <section id="home-hero-section" class="home-hero">
         <div class="home-bg home-bg-blue"></div>
         <div class="home-bg home-bg-violet"></div>
 
@@ -72,6 +72,7 @@ def build_home_hero_html() -> str:
 
 def build_home_card_html(
     *,
+    card_id: str | None = None,
     tone: str,
     icon: str,
     title: str,
@@ -94,28 +95,34 @@ def build_home_card_html(
         for feature_title, feature_desc, feature_icon in features
     )
 
+    card_id_attr = f' id="{html.escape(card_id)}"' if card_id else ""
+
     return f"""
-    <article class="mode-card mode-card-{html.escape(tone)}" onclick="clickHiddenButton('{target_id}')">
+    <article{card_id_attr} class="mode-card mode-card-{html.escape(tone)}" onclick="clickHiddenButton('{target_id}')">
         <div class="mode-card-icon">{html.escape(icon)}</div>
 
-        <div class="mode-card-copy">
-            <h2>{html.escape(title)}</h2>
-            <div class="mode-card-subtitle">{html.escape(subtitle)}</div>
-            <p>{html.escape(description)}</p>
+        <div class="mode-card-body">
+            <div class="mode-card-copy">
+                <h2>{html.escape(title)}</h2>
+                <div class="mode-card-subtitle">{html.escape(subtitle)}</div>
+                <p>{html.escape(description)}</p>
+            </div>
+
+            <div class="mode-card-list">
+                {features_html}
+            </div>
         </div>
 
-        <div class="mode-card-list">
-            {features_html}
+        <div class="mode-card-action-row">
+            <div class="mode-card-cta">{html.escape(button_label)}</div>
         </div>
-
-        <div class="mode-card-cta">{html.escape(button_label)}</div>
     </article>
     """
 
 
 def build_home_footer_html() -> str:
     return """
-    <section class="home-footer">
+    <section id="home-footer-section" class="home-footer">
         <p>AI 기반 실시간 졸음 감지 및 이탈 분석 시스템</p>
     </section>
     """

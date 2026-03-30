@@ -71,9 +71,23 @@ def build_css() -> str:
     #app-root {{
         width: 100%;
         max-width: 1280px;
-        margin: 0 auto;
-        padding: 28px 24px 40px;
+        margin: 0 auto !important;
+        padding: 6px 24px 20px !important;
         box-sizing: border-box;
+        gap: 0 !important;
+    }}
+
+    #app-root,
+    #app-root > .gr-block,
+    #app-root > .gr-block > .gr-block,
+    #app-root .gr-group,
+    #app-root .gr-box,
+    #app-root .gr-panel,
+    #app-root .block,
+    #app-root .gradio-html,
+    #app-root .gr-row,
+    #app-root .gr-column {{
+        margin-top: 0 !important;
     }}
 
     .view-shell {{
@@ -105,6 +119,8 @@ def build_css() -> str:
     .shell-header-wrap,
     .home-hero-wrap,
     .home-footer-wrap,
+    .home-card-grid-wrap,
+    .home-top-spacer-wrap,
     .live-stage-html,
     .live-panel-html,
     .upload-intro-wrap,
@@ -243,9 +259,10 @@ def build_css() -> str:
         border: 1px solid var(--line);
     }}
 
-    .home-shell {{
+    #home-view {{
         position: relative;
-        min-height: calc(100vh - 68px);
+        min-height: 0;
+        gap: 0;
         background:
             radial-gradient(circle at 50% 0%, rgba(17, 24, 39, 0.52), transparent 48%),
             linear-gradient(180deg, #0a0e1a 0%, #0a0e1a 100%);
@@ -256,53 +273,121 @@ def build_css() -> str:
         isolation: isolate;
     }}
 
-    .home-shell,
-    .home-shell > .gr-block,
-    .home-shell .gr-group,
-    .home-shell .gr-box,
-    .home-shell .gr-panel,
-    .home-shell .block,
-    .home-shell-inner,
-    .home-shell-inner > .gr-block,
-    .home-shell-inner .gr-group,
-    .home-shell-inner .gr-box,
-    .home-shell-inner .gr-panel,
-    .home-shell-inner .block {{
+    #home-view,
+    #home-view > .gr-block,
+    #home-view > .gr-block > .gr-block,
+    #home-view .gr-group,
+    #home-view .gr-box,
+    #home-view .gr-panel,
+    #home-view .block,
+    #home-view .gradio-html,
+    #home-view .gr-row,
+    #home-view .gr-column,
+    #home-shell-inner,
+    #home-shell-inner > .gr-block,
+    #home-shell-inner > .gr-block > .gr-block,
+    #home-shell-inner .gr-group,
+    #home-shell-inner .gr-box,
+    #home-shell-inner .gr-panel,
+    #home-shell-inner .block,
+    #home-shell-inner .gradio-html,
+    #home-shell-inner .gr-row,
+    #home-shell-inner .gr-column {{
         background: #0a0e1a !important;
         border: none !important;
         box-shadow: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        min-height: 0 !important;
     }}
 
-    .home-shell-inner {{
+    #home-view,
+    #home-shell-inner {{
         display: flex;
         flex-direction: column;
         gap: 0;
     }}
 
+    #home-shell-inner {{
+        padding-top: 20px !important;
+    }}
+
+    #home-top-spacer,
+    #home-top-spacer > .gr-block,
+    #home-top-spacer .gradio-html,
+    #home-top-spacer .html-container,
+    #home-top-spacer .prose {{
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: transparent !important;
+        min-height: 0 !important;
+    }}
+
+    .home-top-spacer {{
+        height: 20px;
+        width: 100%;
+        display: block;
+    }}
+
+    #home-hero-block,
+    #home-footer-block,
+    #home-card-grid-block,
+    #home-hero-block > .gr-block,
+    #home-footer-block > .gr-block,
+    #home-card-grid-block > .gr-block,
+    #home-view .home-html-wrap,
+    #home-view .home-html-wrap .gradio-html,
+    #home-view .home-html-wrap .prose {{
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        box-shadow: none !important;
+        min-height: 0 !important;
+        background: transparent !important;
+    }}
+
+    #home-hero-block,
+    #home-hero-block.gradio-html,
+    #home-hero-block > .html-container,
+    #home-hero-block .html-container,
+    #home-hero-block .html-container.svelte-1jts93g,
+    #home-hero-block .prose {{
+        margin: 0 !important;
+        padding-top: 0 !important;
+        padding-bottom: 0 !important;
+        min-height: 0 !important;
+        height: auto !important;
+    }}
+
+    #home-hero-section,
     .home-hero {{
         position: relative;
-        padding: 36px 24px 0;
+        padding: 0 24px 0;
         display: flex;
         flex-direction: column;
         align-items: center;
         text-align: center;
-        gap: 0;
+        gap: 10px;
         overflow: hidden;
     }}
 
+    #home-hero-section h1,
     .home-hero h1 {{
-        max-width: 960px;
+        max-width: 1080px;
         margin-top: 0;
-        margin-bottom: 16px;
-        font-size: 48px;
-        line-height: 1.08;
+        margin-bottom: 14px;
+        font-size: 56px;
+        line-height: 1.06;
+        font-weight: 800;
     }}
 
     .hero-note {{
-        max-width: 760px;
+        max-width: 860px;
         color: #94a3b8;
-        font-size: 20px;
-        line-height: 1.5;
+        font-size: 24px;
+        line-height: 1.55;
     }}
 
     .home-bg {{
@@ -325,14 +410,15 @@ def build_css() -> str:
         display: none;
     }}
 
+    #home-hero-section .hero-badge,
     .hero-badge {{
-        margin-bottom: 24px;
-        padding: 8px 16px;
+        margin-bottom: 14px;
+        padding: 10px 18px;
         border-radius: 999px;
         border: 1px solid rgba(59, 130, 246, 0.20);
         background: rgba(59, 130, 246, 0.10);
         color: #93c5fd;
-        font-size: 14px;
+        font-size: 16px;
         font-weight: 500;
     }}
 
@@ -342,62 +428,86 @@ def build_css() -> str:
         line-height: 1;
     }}
 
-    .home-card-grid {{
-        max-width: 1024px;
-        margin: 0 auto;
-        gap: 24px;
-        padding: 52px 24px 0 !important;
-    }}
-
-    .home-card-grid > *,
-    .home-card-grid > * > *,
-    .home-card-grid .gradio-html,
-    .home-card-grid .gr-box,
-    .home-card-grid .gr-block,
-    .home-card-grid .gr-panel,
-    .home-card-grid .block,
-    .home-card-col,
-    .home-card-col > .gr-block,
-    .home-card-html,
-    .home-card-html > .gr-block {{
-        background: transparent !important;
+    #home-card-grid-block,
+    #home-card-grid-block > .gr-block,
+    #home-card-grid-block .gradio-html,
+    #home-card-grid-block .html-container,
+    #home-card-grid-block .prose {{
+        width: 100% !important;
+        max-width: none !important;
+        margin: 0 !important;
+        padding: 0 !important;
         border: none !important;
         box-shadow: none !important;
-        padding: 0 !important;
+        background: transparent !important;
+    }}
+
+    #home-card-grid,
+    .home-card-grid {{
+        max-width: 1200px;
+        margin: 0 auto;
+        width: 100%;
+        display: grid !important;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        align-items: stretch !important;
+        gap: 28px;
+        padding: 32px 24px 0 !important;
+        box-sizing: border-box;
+    }}
+
+    #home-card-grid .home-card-item {{
+        min-width: 0 !important;
+        width: 100% !important;
+        display: flex !important;
+        align-self: stretch !important;
+    }}
+
+    #home-card-grid .home-card-item > * {{
+        width: 100% !important;
+        display: flex !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+    }}
+
+    #home-card-grid .home-card-item .html-container,
+    #home-card-grid .home-card-item .prose {{
+        width: 100% !important;
+        display: flex !important;
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        background: transparent !important;
         margin: 0 !important;
-        min-height: 100%;
+        padding: 0 !important;
     }}
 
-    .home-card-grid > * {{
-        display: flex !important;
-        align-self: stretch !important;
-    }}
-
-    .home-card-grid > * > * {{
-        width: 100%;
-        display: flex;
-    }}
-
-    .home-card-col {{
-        display: flex !important;
-        align-self: stretch !important;
-    }}
-
-    .home-card-html {{
-        width: 100%;
-        display: flex;
-    }}
-
+    #home-live-card,
+    #home-upload-card,
     .mode-card {{
-        height: 100%;
-        min-height: 520px;
-        padding: 28px;
-        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        width: 100% !important;
+        min-width: 100% !important;
+        max-width: 100% !important;
+        height: 640px;
+        min-height: 640px;
+        max-height: 640px;
+        padding: 40px;
+        border-radius: 18px;
         border: 1px solid rgba(30, 41, 59, 0.95);
         background: #151b2e;
         box-shadow: none;
         cursor: pointer;
         transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease, background 0.22s ease;
+        box-sizing: border-box;
+    }}
+
+    .mode-card-body {{
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+        height: 100%;
     }}
 
     .mode-card:hover {{
@@ -415,15 +525,15 @@ def build_css() -> str:
     }}
 
     .mode-card-icon {{
-        width: 58px;
-        height: 58px;
+        width: 72px;
+        height: 72px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 12px;
-        margin-bottom: 16px;
+        border-radius: 16px;
+        margin-bottom: 22px;
         background: rgba(15, 23, 42, 0.28);
-        font-size: 24px;
+        font-size: 30px;
     }}
 
     .mode-card-blue .mode-card-icon {{
@@ -442,22 +552,22 @@ def build_css() -> str:
         display: flex;
         flex-direction: column;
         gap: 8px;
-        margin-bottom: 24px;
+        margin-bottom: 18px;
     }}
 
     .mode-card h2,
     .upload-intro h2 {{
         margin: 0;
         color: var(--text);
-        font-size: 28px;
-        font-weight: 700;
+        font-size: 38px;
+        font-weight: 800;
         letter-spacing: -0.02em;
     }}
 
     .mode-card-subtitle {{
         color: #94a3b8;
-        font-size: 16px;
-        font-weight: 400;
+        font-size: 19px;
+        font-weight: 500;
         letter-spacing: 0;
         text-transform: none;
     }}
@@ -465,8 +575,8 @@ def build_css() -> str:
     .mode-card p {{
         margin: 0;
         color: #cbd5e1;
-        line-height: 1.6;
-        font-size: 16px;
+        line-height: 1.65;
+        font-size: 20px;
     }}
 
     .mode-card-list,
@@ -479,6 +589,10 @@ def build_css() -> str:
         gap: 10px;
     }}
 
+    .mode-card-list {{
+        flex: 1 1 auto;
+    }}
+
     .mode-feature {{
         display: flex;
         align-items: flex-start;
@@ -486,15 +600,15 @@ def build_css() -> str:
     }}
 
     .mode-feature-icon {{
-        width: 32px;
-        height: 32px;
+        width: 36px;
+        height: 36px;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 8px;
+        border-radius: 10px;
         flex-shrink: 0;
         margin-top: 2px;
-        font-size: 14px;
+        font-size: 16px;
     }}
 
     .mode-card-blue .mode-feature-icon {{
@@ -515,14 +629,15 @@ def build_css() -> str:
 
     .mode-feature-title {{
         color: #e2e8f0;
-        font-size: 14px;
-        line-height: 1.45;
+        font-size: 18px;
+        line-height: 1.5;
+        font-weight: 600;
     }}
 
     .mode-feature-desc {{
         color: #64748b;
-        font-size: 12px;
-        line-height: 1.45;
+        font-size: 15px;
+        line-height: 1.5;
     }}
 
     .mode-feature-title,
@@ -531,15 +646,22 @@ def build_css() -> str:
         letter-spacing: -0.01em;
     }}
 
+    .mode-card-action-row {{
+        display: flex;
+        margin-top: auto;
+        padding-top: 28px;
+    }}
+
     .mode-card-cta {{
-        margin-top: 24px;
+        margin-top: auto;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: 100%;
-        min-height: 48px;
-        border-radius: 10px;
-        font-weight: 600;
+        min-height: 56px;
+        border-radius: 12px;
+        font-size: 17px;
+        font-weight: 700;
         background: rgba(255, 255, 255, 0.06);
         color: white;
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -555,15 +677,16 @@ def build_css() -> str:
         box-shadow: 0 12px 28px rgba(147, 51, 234, 0.20);
     }}
 
+    #home-footer-section,
     .home-footer {{
-        padding: 64px 24px 20px;
+        padding: 28px 24px 8px;
         text-align: center;
     }}
 
     .home-footer p {{
         margin: 0;
         color: #475569;
-        font-size: 14px;
+        font-size: 16px;
     }}
 
     .live-page-shell,
@@ -1826,15 +1949,20 @@ def build_css() -> str:
 
     @media (max-width: 768px) {{
         #app-root {{
-            padding: 18px 14px 28px;
+            padding: 10px 14px 20px !important;
         }}
 
         .shell-header,
         .home-hero,
-        .home-card-grid,
         .live-layout,
         .upload-layout,
         .report-actions {{
+            padding-left: 16px !important;
+            padding-right: 16px !important;
+        }}
+
+        #home-card-grid,
+        .home-card-grid {{
             padding-left: 16px !important;
             padding-right: 16px !important;
         }}
@@ -1849,16 +1977,35 @@ def build_css() -> str:
         .shell-copy h1,
         .home-hero h1,
         .report-topbar h2 {{
-            font-size: 30px;
+            font-size: 36px;
         }}
 
         .hero-note {{
-            font-size: 16px;
+            font-size: 18px;
         }}
 
         .mode-card {{
-            min-height: auto;
-            padding: 24px;
+            height: auto;
+            min-height: 560px;
+            max-height: none;
+            padding: 28px;
+        }}
+
+        #home-hero-section,
+        .home-hero {{
+            padding-top: 0;
+        }}
+
+        #home-card-grid,
+        .home-card-grid {{
+            grid-template-columns: 1fr !important;
+            padding-top: 20px !important;
+        }}
+
+        #home-footer-section,
+        .home-footer {{
+            padding-top: 20px;
+            padding-bottom: 0;
         }}
 
         .report-summary-grid {{
