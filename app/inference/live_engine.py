@@ -12,6 +12,7 @@ import torch
 from ultralytics import YOLO
 
 from scripts.infer_video import PipelineConfig, ZoomPipeline
+from src.teacher import DEFAULT_TEACHER_NAMES, TEACHER_STATE, student_slots
 
 
 @dataclass
@@ -83,6 +84,7 @@ class LiveZoomEngine:
         self._config = PipelineConfig(
             target_fps=fps,
             device=device,
+            teacher_names=list(DEFAULT_TEACHER_NAMES),
         )
         self._pipeline: Optional[ZoomPipeline] = None
         self._open_pipeline()
@@ -142,6 +144,7 @@ class LiveZoomEngine:
 
         slots: list[SlotInfo] = []
         for r in records:
+            is_teacher = bool(r.get("is_teacher", 0))
             ear = r.get("ear", float("nan"))
             mar = r.get("mar", float("nan"))
             x1, y1, x2, y2 = (
@@ -153,11 +156,9 @@ class LiveZoomEngine:
             bw, bh = x2 - x1, y2 - y1
             box_pct = (x1 / frame_w, y1 / frame_h, x2 / frame_w, y2 / frame_h)
 
-            status = r["final_state"]
+            status = TEACHER_STATE if is_teacher else r["final_state"]
             # bbox가 너무 작으면 FaceMesh 결과를 신뢰할 수 없으므로 NORMAL 처리
-            if not bool(r.get("is_teacher", 0)) and (
-                bw < MIN_BBOX_W or bh < MIN_BBOX_H
-            ):
+            if not is_teacher and (bw < MIN_BBOX_W or bh < MIN_BBOX_H):
                 status = "NORMAL"
 
             # NoFace 판정: 자리이탈/화면꺼짐/ABSENT는 얼굴 없는 게 당연하므로 제외
@@ -165,7 +166,9 @@ class LiveZoomEngine:
             is_body_present = (
                 cls_name not in ("person_off", "screen_off") and status != "ABSENT"
             )
-            noface = is_body_present and bool(r.get("is_noface", False))
+            noface = (not is_teacher) and is_body_present and bool(
+                r.get("is_noface", False)
+            )
 
             # face_box는 썸네일 내부 좌표 → 프레임 절대 좌표로 변환 후 비율화
             raw_fb = r.get("face_box")
@@ -189,7 +192,7 @@ class LiveZoomEngine:
                     name=r["name"] or f"학생 {r['slot_id']}",
                     status=status,
                     class_name=r["cls_name"],
-                    is_teacher=bool(r.get("is_teacher", 0)),
+                    is_teacher=is_teacher,
                     ear=ear if not (isinstance(ear, float) and np.isnan(ear)) else 0.0,
                     mar=mar if not (isinstance(mar, float) and np.isnan(mar)) else 0.0,
                     box_pct=box_pct,
@@ -201,12 +204,12 @@ class LiveZoomEngine:
         # 실시간 UI에서는 YAWN을 NORMAL로 취급
         priority = {"DROWSY": 2, "ABSENT": 1, "NORMAL": 0}
         rep_status = "NORMAL"
-        if slots:
+        students = student_slots(slots)
+        if students:
             rep_status = max(
                 (
                     "NORMAL" if s.status == "YAWN" else s.status
-                    for s in slots
-                    if not s.is_teacher
+                    for s in students
                 ),
                 key=lambda x: priority.get(x, 0),
                 default="NORMAL",
@@ -219,20 +222,22 @@ class LiveZoomEngine:
         }
         alert = alert_map.get(rep_status, "상태를 확인할 수 없습니다")
 
-        student_slots = [s for s in slots if not s.is_teacher]
-        drowsy_names = [s.name for s in student_slots if s.status == "DROWSY"]
-        absent_names = [s.name for s in student_slots if s.status == "ABSENT"]
+        drowsy_names = [s.name for s in students if s.status == "DROWSY"]
+        absent_names = [s.name for s in students if s.status == "ABSENT"]
 
         report_lines = [
             f"총 프레임: {self.frame_count}",
-            f"감지된 슬롯: {len(slots)}명",
+            f"감지된 수강생: {len(students)}명",
         ]
         if drowsy_names:
             report_lines.append(f"졸음: {', '.join(drowsy_names)}")
         if absent_names:
             report_lines.append(f"이탈: {', '.join(absent_names)}")
 
-        slot_debug = " | ".join(f"[{s.slot_id}]{s.name}={s.status}" for s in slots)
+        slot_debug = " | ".join(
+            f"[{s.slot_id}]{s.name}={'TEACHER' if s.is_teacher else s.status}"
+            for s in slots
+        )
         debug_text = f"frame={self.frame_count} slots={len(slots)} {slot_debug}"
 
         return LiveInferenceResult(

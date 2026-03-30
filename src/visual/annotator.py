@@ -94,6 +94,7 @@ def draw_slot_bbox(
     box_colors: dict,
     state_colors: dict,
     no_face: bool = False,
+    is_teacher: bool = False,
 ) -> None:
     """
     슬롯 바운딩박스와 상태 레이블을 캔버스에 그립니다.
@@ -107,13 +108,15 @@ def draw_slot_bbox(
 
     # 표시 상태 결정: NOT FOUND > final_state 순 우선
     # YAWN은 final_state 자체에 포함됨 (독립 상태)
-    if no_face:
+    if is_teacher:
+        display_state = ""
+    elif no_face:
         display_state = "NOT FOUND"
     else:
         display_state = final_state
 
     # bbox 테두리 색 결정
-    if display_state == "NOT FOUND":
+    if is_teacher or display_state == "NOT FOUND":
         border_color = (120, 120, 120)   # 회색
     elif display_state in state_colors and display_state not in ("NORMAL", "IGNORE", "ABSENT"):
         border_color = state_colors[display_state]
@@ -124,7 +127,9 @@ def draw_slot_bbox(
 
     cv2.rectangle(canvas, (x1, y1), (x2, y2), border_color, 2)
 
-    label = f"ID{slot_id} {display_state}"
+    label = "" if is_teacher else f"ID{slot_id} {display_state}"
+    if not label:
+        return
     (lw, lh), _ = cv2.getTextSize(label, _FONT, 0.44, 1)
     lx = max(0, x1)
     ly = max(lh + 4, y1 - 2)
@@ -184,6 +189,9 @@ def draw_info_box(
 
     def _f(v) -> str:
         return "-" if (v is None or (isinstance(v, float) and math.isnan(v))) else str(round(float(v), 3))
+
+    if slot.is_teacher:
+        return
 
     ear_th = slot.bl_ear * 0.75 if slot.bl_ear else 0.18
     mar_th = max(slot.bl_mar * 1.30, 0.60) if slot.bl_mar else 0.60

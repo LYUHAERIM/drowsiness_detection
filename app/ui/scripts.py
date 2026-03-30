@@ -165,6 +165,7 @@ def build_head_script() -> str:
         IGNORE: "rgba(160, 160, 160, 0.85)",
     }};
     const NOFACE_COLOR = "rgba(160, 160, 160, 0.85)";
+    const TEACHER_COLOR = "rgba(160, 160, 160, 0.90)";
 
     const STATUS_KO = {{
         NORMAL: "정상", DROWSY: "졸음", ABSENT: "이탈",
@@ -195,12 +196,15 @@ def build_head_script() -> str:
             const w = (x2p - x1p) * rect.width;
             const h = (y2p - y1p) * rect.height;
             if (w < 4 || h < 4) continue;
+            const isTeacher = Boolean(s.is_teacher);
 
             // YAWN은 실시간 화면에서 NORMAL로 보여줌
             const uiStatus = (s.status === "YAWN") ? "NORMAL" : s.status;
             // infer_video.py 동일 로직: noface면 status 무시, NOT FOUND 표시
-            const displayState = s.noface ? "NOT FOUND" : uiStatus;
-            const color = s.noface ? NOFACE_COLOR : (BBOX_COLORS[uiStatus] || BBOX_COLORS.NORMAL);
+            const displayState = isTeacher ? "" : (s.noface ? "NOT FOUND" : uiStatus);
+            const color = isTeacher
+                ? TEACHER_COLOR
+                : (s.noface ? NOFACE_COLOR : (BBOX_COLORS[uiStatus] || BBOX_COLORS.NORMAL));
             const lw = (displayState === "DROWSY" || displayState === "ABSENT") ? 3 : 2;
 
             // bbox 테두리
@@ -209,19 +213,21 @@ def build_head_script() -> str:
             ctx.strokeRect(x, y, w, h);
 
             // 상단 안쪽 라벨: infer_video.py와 동일하게 noface면 "NOT FOUND"로 대체
-            const label = `ID${{s.slot_id}}  ${{displayState}}`;
-            ctx.font = "bold 11px monospace";
-            const tw = ctx.measureText(label).width;
-            const lh = 17;
+            if (!isTeacher) {{
+                const label = `ID${{s.slot_id}}  ${{displayState}}`;
+                ctx.font = "bold 11px monospace";
+                const tw = ctx.measureText(label).width;
+                const lh = 17;
 
-            // 라벨 배경은 bbox 상단 안쪽에
-            ctx.fillStyle = color;
-            ctx.fillRect(x, y, tw + 10, lh);
-            ctx.fillStyle = "#fff";
-            ctx.fillText(label, x + 5, y + lh - 4);
+                // 라벨 배경은 bbox 상단 안쪽에
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, tw + 10, lh);
+                ctx.fillStyle = "#fff";
+                ctx.fillText(label, x + 5, y + lh - 4);
+            }}
 
             // FaceMesh face_box inner box (마젠타 점선)
-            if (s.face_box_pct && s.face_box_pct.length === 4) {{
+            if (!isTeacher && s.face_box_pct && s.face_box_pct.length === 4) {{
                 const [fx1p, fy1p, fx2p, fy2p] = s.face_box_pct;
                 const fx = fx1p * rect.width;
                 const fy = fy1p * rect.height;

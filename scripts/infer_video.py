@@ -52,6 +52,7 @@ from src.tracking.slot import (
     sort_detections_reading_order,
     stabilize_bbox,
 )
+from src.teacher import DEFAULT_TEACHER_NAMES, TEACHER_STATE, resolve_teacher_names
 from src.utils.loaders import load_env
 from src.utils.video_conversion import VideoReader, VideoWriter
 from src.visual.annotator import (
@@ -119,7 +120,9 @@ class PipelineConfig:
     ocr_name_conf_lock: float = 0.70  # 이 신뢰도 이상이면 OCR 재시도 안 함
     layout_boost_sec: float = 3.0  # 레이아웃 변경 후 빠른 OCR 지속 시간
     layout_change_cooldown: float = 2.0  # 레이아웃 변경 감지 최소 간격 (초)
-    teacher_names: list = field(default_factory=list)  # 강사 이름 목록
+    teacher_names: list = field(
+        default_factory=lambda: list(DEFAULT_TEACHER_NAMES)
+    )  # 강사 이름 목록
 
     # FaceMesh
     face_min_conf: float = 0.25
@@ -455,15 +458,16 @@ class ZoomPipeline:
                     sl.current_state = "DROWSY"
                     display_noface = False
 
-            sl.total_frames += 1
-            if final_state == "DROWSY":
-                sl.frames_drowsy += 1
-            elif final_state == "YAWN":
-                sl.frames_yawn += 1
-            elif final_state == "ABSENT":
-                sl.frames_absent += 1
-            else:
-                sl.frames_normal += 1
+            if not sl.is_teacher:
+                sl.total_frames += 1
+                if final_state == "DROWSY":
+                    sl.frames_drowsy += 1
+                elif final_state == "YAWN":
+                    sl.frames_yawn += 1
+                elif final_state == "ABSENT":
+                    sl.frames_absent += 1
+                else:
+                    sl.frames_normal += 1
 
             # OCR (필요할 때만)
             self._try_ocr(sl, thumb, frame_idx)
@@ -478,8 +482,10 @@ class ZoomPipeline:
                 BOX_COLORS,
                 STATE_COLORS,
                 no_face=display_noface,
+                is_teacher=sl.is_teacher,
             )
-            draw_face_box(canvas, (x1, y1), face_result.face_box)
+            if not sl.is_teacher:
+                draw_face_box(canvas, (x1, y1), face_result.face_box)
 
             ibox_h = INFO_BOX_H
             if x2 + cfg.info_box_w <= canvas.shape[1]:
@@ -506,8 +512,8 @@ class ZoomPipeline:
                     "slot_id": sid,
                     "name": sl.name_final,
                     "is_teacher": int(sl.is_teacher),
-                    "final_state": final_state,
-                    "raw_state": raw_state,
+                    "final_state": TEACHER_STATE if sl.is_teacher else final_state,
+                    "raw_state": TEACHER_STATE if sl.is_teacher else raw_state,
                     "drowsy_reason": drowsy_reason,
                     "cls_name": det["cls"],
                     "cls_conf": round(det["conf"], 4),
@@ -534,6 +540,8 @@ class ZoomPipeline:
         for sid in um_slots:
             sl = self._slots.get(sid)
             if sl is None or sl.misses > int(cfg.slot_max_miss_sec * fps):
+                continue
+            if sl.is_teacher:
                 continue
             x1, y1, x2, y2 = sl.box if sl.box else (0, 0, 0, 0)
             records.append(
@@ -576,6 +584,8 @@ class ZoomPipeline:
         rows = []
         for sid in sorted(self._slots.keys()):
             sl = self._slots[sid]
+            if sl.is_teacher:
+                continue
             rows.append(
                 {
                     "slot_id": sid,
@@ -636,6 +646,14 @@ class ZoomPipeline:
             except Exception:
                 continue
             if name:
+                if self._ocr.is_teacher(name):
+                    sl.name_final = name
+                    sl.name_conf = 1.0
+                    sl.is_teacher = True
+                    sl.current_state = "IGNORE"
+                    sl.raw_hist.clear()
+                    continue
+
                 sl.name_votes.append(name)
                 if len(sl.name_votes) > cfg.name_vote_maxlen:
                     sl.name_votes = sl.name_votes[-cfg.name_vote_maxlen :]
@@ -759,7 +777,7 @@ def run_inference(
             print(f"[device] {device}")
 
     config = PipelineConfig(
-        teacher_names=teacher_names or ["강경미"],
+        teacher_names=resolve_teacher_names(teacher_names),
         target_fps=fps,
         use_pose_fallback=use_fallback,
         start_sec=start_sec,

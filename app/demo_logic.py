@@ -12,6 +12,7 @@ from app.config import BASE_DIR, YOLO_CHECKPOINT_PATH
 from app.inference.runtime import RUNTIME, RuntimeSnapshot
 from app.ui.templates import build_report_html, build_upload_file_state_html
 from scripts.infer_video import run_inference
+from src.teacher import is_teacher_name, student_slots
 
 Status = str
 
@@ -241,6 +242,7 @@ def _slots_to_json(slots) -> str:
             {
                 "slot_id": s.slot_id,
                 "name": s.name,
+                "is_teacher": s.is_teacher,
                 "status": s.status,
                 "ear": round(float(s.ear), 3),
                 "mar": round(float(s.mar), 3),
@@ -251,7 +253,6 @@ def _slots_to_json(slots) -> str:
                 "noface": s.noface,
             }
             for s in slots
-            if not s.is_teacher
         ]
     )
 
@@ -283,6 +284,7 @@ def _build_control_panel(is_running: bool) -> str:
 
 
 def _build_status_card(status: str, slots: list) -> str:
+    slots = student_slots(slots)
     meta = _status_meta(status)
     slot_count = len(slots)
     drowsy_count = sum(1 for s in slots if s.status == "DROWSY")
@@ -310,11 +312,9 @@ def _build_status_card(status: str, slots: list) -> str:
 
 
 def _build_slot_list(slots: list) -> str:
+    slots = student_slots(slots)
     rows = []
     for slot in slots:
-        if slot.is_teacher:
-            continue
-
         meta = _status_meta(slot.status)
         rows.append(
             f"""
@@ -596,6 +596,8 @@ def build_upload_report_data(
     absent_students = 0
 
     for row in track_summary:
+        if bool(row.get("is_teacher")) or is_teacher_name(row.get("name")):
+            continue
         total_frames = int(row.get("total_frames", 0) or 0)
         focus = _safe_pct(row.get("frames_normal", 0), total_frames)
         drowsy = _safe_pct(row.get("frames_drowsy", 0), total_frames)
@@ -788,7 +790,7 @@ def _render_outputs(snapshot: RuntimeSnapshot, ack: int, _annotated_frame=None):
         alert=_latest_alert_text(),
         report=_report_text(),
         is_running=snapshot.running,
-        slots=slots,
+        slots=student_slots(slots),
     )
     return (
         snapshot.status,
@@ -836,7 +838,7 @@ def on_stop(frame_ack: int):
         alert=_latest_alert_text(),
         report=_report_text(),
         is_running=False,
-        slots=list(snapshot.slots),
+        slots=student_slots(snapshot.slots),
     )
     return (
         False,
