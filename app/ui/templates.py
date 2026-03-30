@@ -53,7 +53,7 @@ def build_shell_header_html(
 
 def build_home_hero_html() -> str:
     return f"""
-    <section class="home-hero">
+    <section id="home-hero-section" class="home-hero">
         <div class="home-bg home-bg-blue"></div>
         <div class="home-bg home-bg-violet"></div>
 
@@ -72,6 +72,7 @@ def build_home_hero_html() -> str:
 
 def build_home_card_html(
     *,
+    card_id: str | None = None,
     tone: str,
     icon: str,
     title: str,
@@ -94,28 +95,34 @@ def build_home_card_html(
         for feature_title, feature_desc, feature_icon in features
     )
 
+    card_id_attr = f' id="{html.escape(card_id)}"' if card_id else ""
+
     return f"""
-    <article class="mode-card mode-card-{html.escape(tone)}" onclick="clickHiddenButton('{target_id}')">
+    <article{card_id_attr} class="mode-card mode-card-{html.escape(tone)}" onclick="clickHiddenButton('{target_id}')">
         <div class="mode-card-icon">{html.escape(icon)}</div>
 
-        <div class="mode-card-copy">
-            <h2>{html.escape(title)}</h2>
-            <div class="mode-card-subtitle">{html.escape(subtitle)}</div>
-            <p>{html.escape(description)}</p>
+        <div class="mode-card-body">
+            <div class="mode-card-copy">
+                <h2>{html.escape(title)}</h2>
+                <div class="mode-card-subtitle">{html.escape(subtitle)}</div>
+                <p>{html.escape(description)}</p>
+            </div>
+
+            <div class="mode-card-list">
+                {features_html}
+            </div>
         </div>
 
-        <div class="mode-card-list">
-            {features_html}
+        <div class="mode-card-action-row">
+            <div class="mode-card-cta">{html.escape(button_label)}</div>
         </div>
-
-        <div class="mode-card-cta">{html.escape(button_label)}</div>
     </article>
     """
 
 
 def build_home_footer_html() -> str:
     return """
-    <section class="home-footer">
+    <section id="home-footer-section" class="home-footer">
         <p>AI 기반 실시간 졸음 감지 및 이탈 분석 시스템</p>
     </section>
     """
@@ -299,10 +306,48 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
         "이탈 감지": "이탈 이벤트 발생 기준",
     }
 
+    summary_icon_map = {
+        "총 참여자": "👥",
+        "평균 집중도": "📈",
+        "졸음 감지 학생": "😴",
+        "졸음 감지": "😴",
+        "이탈 감지 학생": "🚶",
+        "이탈 감지": "🚶",
+    }
+
+    events = report_data.get("events", [])
+    participants = report_data.get("participants", [])
+    highlights = report_data.get("highlights", [])
+    chart_points = report_data.get("chart_points", [])
+    insights = report_data.get("insights", [])
+
+    is_upload_report = str(report_data.get("badge", "")).lower().startswith("upload")
+    badge_text = "UPLOAD REPORT" if is_upload_report else "LIVE REPORT"
+    badge_tone = "upload" if is_upload_report else "live"
+
+    title = report_data.get("title", "실시간 분석 리포트")
+    subtitle = report_data.get("subtitle", "분석 결과 요약")
+
+    back_target = "report-upload-btn" if is_upload_report else "report-live-btn"
+    mode_target = "report-live-btn" if is_upload_report else "report-upload-btn"
+    mode_label = "실시간 보기" if is_upload_report else "녹화 분석 보기"
+
+    fallback_primary = (
+        highlights[0]
+        if highlights
+        else "전체 수업 흐름과 주요 상태 변화를 종합해 확인할 수 있습니다."
+    )
+    fallback_secondary = (
+        highlights[-1] if highlights else "이벤트가 발생한 시간대를 다시 확인해 주세요."
+    )
+
     summary_cards = "".join(
         f"""
         <article class="report-summary-card report-animate tone-{html.escape(card.get('tone', 'neutral'))} figma-card">
-            <div class="report-summary-label">{html.escape(card.get('label', ''))}</div>
+            <div class="report-summary-top">
+                <div class="report-summary-icon">{html.escape(summary_icon_map.get(card.get('label', ''), '•'))}</div>
+                <div class="report-summary-label">{html.escape(card.get('label', ''))}</div>
+            </div>
             <div class="report-summary-value">{html.escape(str(card.get('value', '-')))}</div>
             <div class="report-summary-meta">{html.escape(summary_meta_map.get(card.get('label', ''), '분석 결과 요약 지표'))}</div>
         </article>
@@ -310,11 +355,10 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
         for card in report_data.get("summary_cards", [])
     )
 
-    events = report_data.get("events", [])
     event_config = {
-        "positive": ("정상", "집중 상태가 유지되었습니다", "◉"),
-        "warning": ("졸음", "졸음이 감지되었습니다", "▲"),
-        "danger": ("이탈", "자리를 이탈했습니다", "●"),
+        "positive": ("정상", "집중 상태가 안정적으로 유지되었습니다", "◉"),
+        "warning": ("졸음", "졸음 신호가 감지된 구간입니다", "▲"),
+        "danger": ("이탈", "자리 이탈 또는 화면 이탈이 기록되었습니다", "●"),
         "neutral": ("이벤트", "상태가 기록되었습니다", "◆"),
     }
 
@@ -339,14 +383,16 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
         else '<div class="report-placeholder">표시할 이벤트가 없습니다.</div>'
     )
 
-    participants = report_data.get("participants", [])
     participants_html = (
         "".join(
             f"""
             <div class="participant-card report-animate figma-card">
                 <div class="participant-head">
-                    <strong>{html.escape(item.get('name', '참여자'))}</strong>
-                    <span>집중도 {html.escape(str(item.get('focus', 0)))}%</span>
+                    <div class="participant-title-wrap">
+                        <strong>{html.escape(item.get('name', '참여자'))}</strong>
+                        <span>개인별 상태 분포</span>
+                    </div>
+                    <div class="participant-focus-chip">집중도 {html.escape(str(item.get('focus', 0)))}%</div>
                 </div>
                 <div class="participant-bar">
                     <div class="tone-positive" style="width:{item.get('normal', 0)}%"></div>
@@ -365,10 +411,6 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
         if participants
         else '<div class="report-placeholder">참여자 통계가 아직 없습니다.</div>'
     )
-
-    highlights = report_data.get("highlights", [])
-    chart_points = report_data.get("chart_points", [])
-    insights = report_data.get("insights", [])
 
     def _build_area_svg(points: list[dict[str, Any]]) -> str:
         if not points:
@@ -459,9 +501,10 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
     chart_html = (
         f"""
         <section class="report-card report-chart-card report-animate figma-card">
-            <div class="report-card-head">
+            <div class="report-card-head report-card-head-spread">
                 <div>
-                    <h3>↗ {html.escape(report_data.get('chart_title', '시간대별 상태 분석'))}</h3>
+                    <div class="report-card-kicker">TIMELINE</div>
+                    <h3>{html.escape(report_data.get('chart_title', '시간대별 상태 분석'))}</h3>
                     <span>{html.escape(report_data.get('chart_subtitle', '시간 흐름에 따른 상태 변화'))}</span>
                 </div>
                 <div class="report-chart-legend">
@@ -483,6 +526,7 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
         "".join(
             f"""
             <div class="report-insight report-animate tone-{html.escape(item.get('tone', 'info'))}">
+                <div class="report-insight-badge">{html.escape(item.get('tone', 'info').upper())}</div>
                 <strong>{html.escape(item.get('title', '인사이트'))}</strong>
                 <p>{html.escape(item.get('detail', ''))}</p>
             </div>
@@ -493,37 +537,29 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
         else ""
     )
 
-    is_upload_report = str(report_data.get("badge", "")).lower().startswith("upload")
-    back_target = "report-upload-btn" if is_upload_report else "report-live-btn"
     action_buttons = (
         '<button class="report-download-btn">↓ PDF</button><button class="report-download-btn">↓ Excel</button>'
         if is_upload_report
         else '<button class="report-download-btn">↓ 리포트 다운로드</button>'
     )
 
-    title = report_data.get("title", "실시간 분석 리포트")
-    subtitle = report_data.get("subtitle", "분석 결과 요약")
-
-    fallback_primary = (
-        highlights[0]
-        if highlights
-        else "전체 수업 흐름과 주요 상태 변화를 종합해 확인할 수 있습니다."
-    )
-    fallback_secondary = (
-        highlights[-1] if highlights else "이벤트가 발생한 시간대를 다시 확인해 주세요."
-    )
-
     return f"""
     <section class="report-shell report-shell-realtime">
         <div class="report-topbar">
             <div class="report-topbar-main">
-                <button class="report-topbar-back" onclick="clickHiddenButton('{back_target}')">←</button>
-                <div>
+                <div class="report-topbar-nav-left">
+                    <button class="report-topbar-nav" onclick="clickHiddenButton('report-home-btn')">홈</button>
+                    <button class="report-topbar-nav" onclick="clickHiddenButton('{back_target}')">이전 화면</button>
+                </div>
+                <div class="report-topbar-copy">
+                    <div class="report-topbar-kicker">Analysis Dashboard</div>
                     <h2>{html.escape(title)}</h2>
                     <p>{html.escape(subtitle)}</p>
                 </div>
             </div>
             <div class="report-topbar-actions">
+                <div class="report-mode-badge tone-{badge_tone}">{html.escape(badge_text)}</div>
+                <button class="report-topbar-nav report-topbar-nav-primary" onclick="clickHiddenButton('{mode_target}')">{html.escape(mode_label)}</button>
                 {action_buttons}
             </div>
         </div>
@@ -538,7 +574,8 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
             <section class="report-card report-animate figma-card">
                 <div class="report-card-head">
                     <div>
-                        <h3>⊙ 이벤트 로그</h3>
+                        <div class="report-card-kicker">EVENT LOG</div>
+                        <h3>이벤트 로그</h3>
                         <span>졸음 및 이탈 발생 시점</span>
                     </div>
                 </div>
@@ -550,6 +587,7 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
             <section class="report-card report-animate figma-card">
                 <div class="report-card-head">
                     <div>
+                        <div class="report-card-kicker">PARTICIPANTS</div>
                         <h3>참여자별 통계</h3>
                         <span>개인별 집중도 및 상태 분석</span>
                     </div>
@@ -563,6 +601,7 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
         <section class="report-card report-animate figma-card">
             <div class="report-card-head">
                 <div>
+                    <div class="report-card-kicker">INSIGHTS</div>
                     <h3>분석 결과 및 제안</h3>
                     <span>전체 수업 흐름 요약</span>
                 </div>
@@ -571,11 +610,13 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
             <div class="report-insight-grid">
                 {insights_html or f'''
                 <div class="report-insight report-animate tone-info">
+                    <div class="report-insight-badge">INFO</div>
                     <strong>분석 결과 요약</strong>
                     <p>{html.escape(fallback_primary)}</p>
                 </div>
                 '''}
                 <div class="report-insight report-animate tone-warning">
+                    <div class="report-insight-badge">CHECK</div>
                     <strong>추가 확인 권장</strong>
                     <p>{html.escape(fallback_secondary)}</p>
                 </div>
