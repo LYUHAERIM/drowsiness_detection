@@ -73,10 +73,45 @@ def build_head_script() -> str:
         clickHiddenButton("real-stop-btn");
     }}
 
+    function getStageBackgroundVideo() {{
+        const bgVideo = document.getElementById("stage-bg-video");
+        return (bgVideo && bgVideo.tagName === "VIDEO") ? bgVideo : null;
+    }}
+
+    async function startStageBackgroundVideo() {{
+        const bgVideo = getStageBackgroundVideo();
+        if (!bgVideo) return;
+
+        try {{
+            bgVideo.pause();
+            bgVideo.currentTime = 0;
+        }} catch (err) {{
+            console.warn("배경영상 초기화 실패:", err);
+        }}
+
+        try {{
+            await bgVideo.play();
+        }} catch (err) {{
+            console.warn("배경영상 재생 실패:", err);
+        }}
+    }}
+
+    function stopStageBackgroundVideo() {{
+        const bgVideo = getStageBackgroundVideo();
+        if (!bgVideo) return;
+
+        try {{
+            bgVideo.pause();
+            bgVideo.currentTime = 0;
+        }} catch (err) {{
+            console.warn("배경영상 정지 실패:", err);
+        }}
+    }}
+
     async function captureAndSubmitFrame() {{
         const state = overlayState();
         const webcam  = document.getElementById("student-cam");
-        const bgVideo = document.getElementById("stage-bg-video");
+        const bgVideo = getStageBackgroundVideo();
         const frameInput = queryBridgeInput("frame-data-input");
         const seqInput   = queryBridgeInput("frame-seq-input");
         const submitBtn  = queryBridgeButton("frame-submit-btn");
@@ -161,14 +196,14 @@ def build_head_script() -> str:
     const BBOX_COLORS = {{
         NORMAL: "rgba(70,  220, 70,  0.90)",
         DROWSY: "rgba(255, 0,   0,   0.95)",
-        YAWN:   "rgba(255, 128, 0,   0.90)",
         ABSENT: "rgba(255, 165, 0,   0.95)",
         IGNORE: "rgba(160, 160, 160, 0.85)",
     }};
     const NOFACE_COLOR = "rgba(160, 160, 160, 0.85)";
+    const TEACHER_COLOR = "rgba(160, 160, 160, 0.90)";
 
     const STATUS_KO = {{
-        NORMAL: "정상", DROWSY: "졸음", YAWN: "하품", ABSENT: "이탈",
+        NORMAL: "정상", DROWSY: "졸음", ABSENT: "이탈",
     }};
 
     function drawBboxOverlay(slots) {{
@@ -196,12 +231,15 @@ def build_head_script() -> str:
             const w = (x2p - x1p) * rect.width;
             const h = (y2p - y1p) * rect.height;
             if (w < 4 || h < 4) continue;
+            const isTeacher = Boolean(s.is_teacher);
 
-            // YAWN은 bbox에 표시하지 않음 (대시보드/CSV에는 유지) → NORMAL로 보여줌
+            // YAWN은 실시간 화면에서 NORMAL로 보여줌
             const uiStatus = (s.status === "YAWN") ? "NORMAL" : s.status;
             // infer_video.py 동일 로직: noface면 status 무시, NOT FOUND 표시
-            const displayState = s.noface ? "NOT FOUND" : uiStatus;
-            const color = s.noface ? NOFACE_COLOR : (BBOX_COLORS[uiStatus] || BBOX_COLORS.NORMAL);
+            const displayState = isTeacher ? "" : (s.noface ? "NOT FOUND" : uiStatus);
+            const color = isTeacher
+                ? TEACHER_COLOR
+                : (s.noface ? NOFACE_COLOR : (BBOX_COLORS[uiStatus] || BBOX_COLORS.NORMAL));
             const lw = (displayState === "DROWSY" || displayState === "ABSENT") ? 3 : 2;
 
             // bbox 테두리
@@ -210,19 +248,21 @@ def build_head_script() -> str:
             ctx.strokeRect(x, y, w, h);
 
             // 상단 안쪽 라벨: infer_video.py와 동일하게 noface면 "NOT FOUND"로 대체
-            const label = `ID${{s.slot_id}}  ${{displayState}}`;
-            ctx.font = "bold 11px monospace";
-            const tw = ctx.measureText(label).width;
-            const lh = 17;
+            if (!isTeacher) {{
+                const label = `ID${{s.slot_id}}  ${{displayState}}`;
+                ctx.font = "bold 11px monospace";
+                const tw = ctx.measureText(label).width;
+                const lh = 17;
 
-            // 라벨 배경은 bbox 상단 안쪽에
-            ctx.fillStyle = color;
-            ctx.fillRect(x, y, tw + 10, lh);
-            ctx.fillStyle = "#fff";
-            ctx.fillText(label, x + 5, y + lh - 4);
+                // 라벨 배경은 bbox 상단 안쪽에
+                ctx.fillStyle = color;
+                ctx.fillRect(x, y, tw + 10, lh);
+                ctx.fillStyle = "#fff";
+                ctx.fillText(label, x + 5, y + lh - 4);
+            }}
 
             // FaceMesh face_box inner box (마젠타 점선)
-            if (s.face_box_pct && s.face_box_pct.length === 4) {{
+            if (!isTeacher && s.face_box_pct && s.face_box_pct.length === 4) {{
                 const [fx1p, fy1p, fx2p, fy2p] = s.face_box_pct;
                 const fx = fx1p * rect.width;
                 const fy = fy1p * rect.height;
@@ -251,6 +291,8 @@ def build_head_script() -> str:
         if (!video) return;
 
         try {{
+            await startStageBackgroundVideo();
+
             if (video.srcObject && state.intervalId) return;
 
             const stream = await navigator.mediaDevices.getUserMedia({{
@@ -284,6 +326,7 @@ def build_head_script() -> str:
             }}
         }} catch (err) {{
             console.error("웹캠 시작 실패:", err);
+            stopStageBackgroundVideo();
             if (placeholder) {{
                 placeholder.innerText = "카메라 권한이 필요합니다.";
                 placeholder.style.display = "flex";
@@ -323,6 +366,15 @@ def build_head_script() -> str:
             placeholder.innerText = "Start 버튼을 눌러 카메라를 켜세요.";
             placeholder.style.display = "flex";
         }}
+
+        stopStageBackgroundVideo();
     }}
+
+    window.startStageBackgroundVideo = startStageBackgroundVideo;
+    window.stopStageBackgroundVideo = stopStageBackgroundVideo;
+
+    window.setTimeout(() => {{
+        stopStageBackgroundVideo();
+    }}, 0);
     </script>
     """

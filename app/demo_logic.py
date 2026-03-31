@@ -12,6 +12,7 @@ from app.config import BASE_DIR, YOLO_CHECKPOINT_PATH
 from app.inference.runtime import RUNTIME, RuntimeSnapshot
 from app.ui.templates import build_report_html, build_upload_file_state_html
 from scripts.infer_video import run_inference
+from src.teacher import is_teacher_name, student_slots
 
 Status = str
 
@@ -20,6 +21,9 @@ ALERT_COOLDOWN_SEC = 30
 PANEL_STATE: dict[str, Any] = {
     "is_running": False,
     "session_started_at": None,
+    "is_warming_up": False,
+    "warmup_until": None,
+    "pipeline_ready": False,
     "slot_stats": {},
     "prev_statuses": {},
     "last_alert_time": {},
@@ -29,9 +33,8 @@ PANEL_STATE: dict[str, Any] = {
 }
 
 
-def _reset_panel_state() -> None:
-    PANEL_STATE["is_running"] = True
-    PANEL_STATE["session_started_at"] = time.time()
+def _clear_panel_metrics(started_at: float | None = None) -> None:
+    PANEL_STATE["session_started_at"] = started_at
     PANEL_STATE["slot_stats"] = {}
     PANEL_STATE["prev_statuses"] = {}
     PANEL_STATE["last_alert_time"] = {}
@@ -40,8 +43,29 @@ def _reset_panel_state() -> None:
     PANEL_STATE["last_timeline_bucket"] = -1
 
 
+def _reset_panel_state() -> None:
+    PANEL_STATE["is_running"] = True
+    _clear_panel_metrics()
+    PANEL_STATE["is_warming_up"] = True
+    PANEL_STATE["warmup_until"] = None
+    PANEL_STATE["pipeline_ready"] = False
+
+
 def _stop_panel_state() -> None:
     PANEL_STATE["is_running"] = False
+    PANEL_STATE["is_warming_up"] = False
+    PANEL_STATE["warmup_until"] = None
+    PANEL_STATE["pipeline_ready"] = False
+
+
+def _apply_runtime_flags(snapshot: RuntimeSnapshot) -> None:
+    PANEL_STATE["is_warming_up"] = snapshot.is_warming_up
+    PANEL_STATE["warmup_until"] = snapshot.warmup_until or None
+    PANEL_STATE["pipeline_ready"] = snapshot.pipeline_ready
+
+
+def _begin_active_session() -> None:
+    _clear_panel_metrics(started_at=time.time())
 
 
 def _now_ts() -> datetime:
@@ -50,6 +74,8 @@ def _now_ts() -> datetime:
 
 def _status_meta(status: str) -> dict[str, str]:
     normalized = (status or "NORMAL").upper()
+    if normalized == "YAWN":
+        normalized = "NORMAL"
 
     if normalized == "DROWSY":
         return {
@@ -58,14 +84,6 @@ def _status_meta(status: str) -> dict[str, str]:
             "bg": "rgba(245, 158, 11, 0.12)",
             "desc": "졸음이 감지되었습니다",
             "icon": "졸음",
-        }
-    if normalized == "YAWN":
-        return {
-            "label": "하품",
-            "color": "#fb923c",
-            "bg": "rgba(251, 146, 60, 0.12)",
-            "desc": "하품이 감지되었습니다",
-            "icon": "하품",
         }
     if normalized == "ABSENT":
         return {
@@ -110,13 +128,21 @@ def _sync_panel_state(snapshot: RuntimeSnapshot) -> None:
     if not PANEL_STATE["is_running"]:
         return
 
+    was_ready = PANEL_STATE["pipeline_ready"]
+    _apply_runtime_flags(snapshot)
+    if snapshot.is_warming_up:
+        return
+    if snapshot.pipeline_ready and not was_ready:
+        _begin_active_session()
+
     for slot in snapshot.slots:
         if slot.is_teacher:
             continue
 
         sid = slot.slot_id
-        name = slot.name
+        name = slot.name or f"학생 {sid}"
         status = slot.status
+        panel_status = "NORMAL" if status == "YAWN" else status
 
         if sid not in PANEL_STATE["slot_stats"]:
             PANEL_STATE["slot_stats"][sid] = {
@@ -124,33 +150,30 @@ def _sync_panel_state(snapshot: RuntimeSnapshot) -> None:
                 "normal": 0,
                 "drowsy": 0,
                 "absent": 0,
-                "yawn": 0,
             }
         else:
             PANEL_STATE["slot_stats"][sid]["name"] = name
 
         stat = PANEL_STATE["slot_stats"][sid]
-        if status == "DROWSY":
+        if panel_status == "DROWSY":
             stat["drowsy"] += 1
-        elif status == "ABSENT":
+        elif panel_status == "ABSENT":
             stat["absent"] += 1
-        elif status == "YAWN":
-            stat["yawn"] += 1
         else:
             stat["normal"] += 1
 
         prev = PANEL_STATE["prev_statuses"].get(sid, "NORMAL")
-        if prev != status and status not in ("NORMAL", "YAWN"):
+        if prev != panel_status and panel_status != "NORMAL":
             now = time.time()
-            last_t = PANEL_STATE["last_alert_time"].get(name, 0)
+            last_t = PANEL_STATE["last_alert_time"].get(sid, 0)
             if now - last_t >= ALERT_COOLDOWN_SEC:
-                if status == "DROWSY":
+                if panel_status == "DROWSY":
                     _push_alert("DROWSY", f"{name} 학생에게 졸음이 감지되었습니다.")
-                elif status == "ABSENT":
+                elif panel_status == "ABSENT":
                     _push_alert("ABSENT", f"{name} 학생이 자리를 이탈했습니다.")
-                PANEL_STATE["last_alert_time"][name] = now
+                PANEL_STATE["last_alert_time"][sid] = now
 
-        PANEL_STATE["prev_statuses"][sid] = status
+        PANEL_STATE["prev_statuses"][sid] = panel_status
 
     _append_timeline_sample(snapshot)
 
@@ -232,7 +255,7 @@ def _report_text() -> str:
     lines = [f"Total Time: {_format_duration(elapsed)}"]
 
     for _, stat in sorted(stats.items()):
-        total = stat["normal"] + stat["drowsy"] + stat["absent"] + stat["yawn"]
+        total = stat["normal"] + stat["drowsy"] + stat["absent"]
         pct = _safe_pct(stat["normal"], total)
         lines.append(f"{stat['name']}: {pct}% 정상")
 
@@ -249,6 +272,7 @@ def _slots_to_json(slots) -> str:
             {
                 "slot_id": s.slot_id,
                 "name": s.name,
+                "is_teacher": s.is_teacher,
                 "status": s.status,
                 "ear": round(float(s.ear), 3),
                 "mar": round(float(s.mar), 3),
@@ -259,7 +283,6 @@ def _slots_to_json(slots) -> str:
                 "noface": s.noface,
             }
             for s in slots
-            if not s.is_teacher
         ]
     )
 
@@ -290,42 +313,10 @@ def _build_control_panel(is_running: bool) -> str:
     """
 
 
-def _build_status_card(status: str, slots: list) -> str:
-    meta = _status_meta(status)
-    slot_count = len(slots)
-    drowsy_count = sum(1 for s in slots if s.status == "DROWSY")
-    yawn_count = sum(1 for s in slots if s.status == "YAWN")
-    absent_count = sum(1 for s in slots if s.status == "ABSENT")
-
-    summary = f"감지된 학생 {slot_count}명"
-    if drowsy_count:
-        summary += f" · 졸음 {drowsy_count}명"
-    if yawn_count:
-        summary += f" · 하품 {yawn_count}명"
-    if absent_count:
-        summary += f" · 이탈 {absent_count}명"
-
-    return f"""
-    <section class="panel-card panel-status-card" style="background:{meta['bg']}; border-color:{meta['color']}33;">
-        <div class="panel-card-head">
-            <div>
-                <div class="panel-eyebrow">Current Status</div>
-                <h3>{meta['label']}</h3>
-            </div>
-            <div class="panel-status-dot" style="background:{meta['color']};"></div>
-        </div>
-        <p class="panel-status-desc">{meta['desc']}</p>
-        <div class="panel-status-summary">{summary}</div>
-    </section>
-    """
-
-
 def _build_slot_list(slots: list) -> str:
+    slots = student_slots(slots)
     rows = []
     for slot in slots:
-        if slot.is_teacher:
-            continue
-
         meta = _status_meta(slot.status)
         rows.append(
             f"""
@@ -406,7 +397,7 @@ def render_panel_html(
     is_running: bool,
     slots: Optional[list] = None,
 ) -> str:
-    del camera_state, alert, report
+    del camera_state
 
     if slots is None:
         slots = []
@@ -456,7 +447,7 @@ def build_live_report_data() -> dict[str, Any]:
     absent_students = 0
 
     for _, stat in sorted(stats.items()):
-        total = stat["normal"] + stat["drowsy"] + stat["absent"] + stat["yawn"]
+        total = stat["normal"] + stat["drowsy"] + stat["absent"]
         focus = _safe_pct(stat["normal"], total)
         drowsy = _safe_pct(stat["drowsy"], total)
         absent = _safe_pct(stat["absent"], total)
@@ -479,7 +470,8 @@ def build_live_report_data() -> dict[str, Any]:
     if not participants and snapshot.slots:
         fallback_slots = [slot for slot in snapshot.slots if not slot.is_teacher]
         for slot in fallback_slots:
-            focus = 100 if slot.status == "NORMAL" else 0
+            normalized_status = "NORMAL" if slot.status == "YAWN" else slot.status
+            focus = 100 if normalized_status == "NORMAL" else 0
             drowsy = 100 if slot.status == "DROWSY" else 0
             absent = 100 if slot.status == "ABSENT" else 0
             participants.append(
@@ -503,7 +495,9 @@ def build_live_report_data() -> dict[str, Any]:
             {
                 "time": _format_duration(_elapsed_sec()),
                 "normal": sum(
-                    1 for slot in fallback_students if slot.status == "NORMAL"
+                    1
+                    for slot in fallback_students
+                    if slot.status in ("NORMAL", "YAWN")
                 ),
                 "drowsy": sum(
                     1 for slot in fallback_students if slot.status == "DROWSY"
@@ -604,6 +598,8 @@ def build_upload_report_data(
     absent_students = 0
 
     for row in track_summary:
+        if bool(row.get("is_teacher")) or is_teacher_name(row.get("name")):
+            continue
         total_frames = int(row.get("total_frames", 0) or 0)
         focus = _safe_pct(row.get("frames_normal", 0), total_frames)
         drowsy = _safe_pct(row.get("frames_drowsy", 0), total_frames)
@@ -764,12 +760,18 @@ def analyze_uploaded_video(
     output_video = output_dir / f"{video_path.stem}_report.mp4"
 
     progress(0.12, desc="기존 추론 파이프라인 초기화 중")
+
+    def _forward_inference_progress(ratio: float, desc: str) -> None:
+        clamped = max(0.0, min(1.0, float(ratio)))
+        progress(0.12 + (0.80 * clamped), desc=desc)
+
     track_summary = run_inference(
         input_path=video_path,
         checkpoint=YOLO_CHECKPOINT_PATH,
         output_path=output_video,
         fps=7.0,
         teacher_names=["강경미"],
+        progress_callback=_forward_inference_progress,
     )
 
     progress(0.92, desc="리포트 구성 중")
@@ -790,18 +792,20 @@ def analyze_uploaded_video(
 
 def _render_outputs(snapshot: RuntimeSnapshot, ack: int, _annotated_frame=None):
     slots = list(snapshot.slots)
+    alert_text = _latest_alert_text()
+    report_text = _report_text()
     panel_html = render_panel_html(
         camera_state="ON" if snapshot.running else "OFF",
         status=snapshot.status,
-        alert=_latest_alert_text(),
-        report=_report_text(),
+        alert=alert_text,
+        report=report_text,
         is_running=snapshot.running,
-        slots=slots,
+        slots=student_slots(slots),
     )
     return (
         snapshot.status,
-        _latest_alert_text(),
-        _report_text(),
+        alert_text,
+        report_text,
         panel_html,
         _debug_text(snapshot),
         ack,
@@ -812,7 +816,7 @@ def _render_outputs(snapshot: RuntimeSnapshot, ack: int, _annotated_frame=None):
 def on_start():
     _reset_panel_state()
     snapshot = RUNTIME.start()
-    _sync_panel_state(snapshot)
+    _apply_runtime_flags(snapshot)
 
     panel_html = render_panel_html(
         camera_state="ON",
@@ -837,6 +841,7 @@ def on_start():
 def on_stop(frame_ack: int):
     _stop_panel_state()
     snapshot = RUNTIME.stop()
+    _apply_runtime_flags(snapshot)
 
     panel_html = render_panel_html(
         camera_state="OFF",
@@ -844,7 +849,7 @@ def on_stop(frame_ack: int):
         alert=_latest_alert_text(),
         report=_report_text(),
         is_running=False,
-        slots=list(snapshot.slots),
+        slots=student_slots(snapshot.slots),
     )
     return (
         False,

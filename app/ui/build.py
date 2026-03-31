@@ -7,7 +7,6 @@ from app.config import STAGE_MEDIA_PATH
 from app.demo_logic import (
     analyze_uploaded_video,
     build_empty_report_data,
-    compose_class_start_time,
     describe_uploaded_file,
     on_start,
     on_stop,
@@ -27,10 +26,8 @@ from app.ui.templates import (
     build_stage_html,
     build_upload_feature_html,
     build_upload_file_state_html,
-    build_upload_intro_html,
+    build_upload_info_card_html,
     build_upload_tip_html,
-    build_upload_time_intro_html,
-    build_upload_time_preview_html,
 )
 
 
@@ -85,7 +82,34 @@ def _open_live_report_fast():
     return (*_view_updates("report"), report_data, render_report_html(report_data))
 
 
-def _analyze_and_open_report(
+def _to_24h_hour(meridiem: str, hour_12: str | int) -> int:
+    meridiem = str(meridiem or "오전").strip()
+    hour_12 = int(hour_12)
+
+    if meridiem == "오전":
+        return 0 if hour_12 == 12 else hour_12
+    return 12 if hour_12 == 12 else hour_12 + 12
+
+
+def _compose_upload_start_time(
+    meridiem: str,
+    hour_12: str | int,
+    minute: str | int,
+) -> str:
+    hour_24 = _to_24h_hour(meridiem, hour_12)
+    minute_int = int(minute)
+    return f"{hour_24:02d}:{minute_int:02d}"
+
+
+def _preview_upload_start_time(
+    meridiem: str,
+    hour_12: str | int,
+    minute: str | int,
+) -> str:
+    return f"{str(meridiem)} {int(hour_12):02d}:{int(minute):02d}"
+
+
+def _analyze_upload_only(
     file_path: str | None,
     class_start_time: str,
     progress=gr.Progress(track_tqdm=True),
@@ -94,7 +118,6 @@ def _analyze_and_open_report(
         file_path, class_start_time, progress
     )
     return (
-        *_view_updates("report"),
         report_data,
         render_report_html(report_data),
         status_text,
@@ -158,6 +181,10 @@ def create_demo() -> gr.Blocks:
         </div>
     </div>
     """
+
+    meridiem_choices = ["오전", "오후"]
+    hour_choices = [f"{i:02d}" for i in range(1, 13)]
+    minute_choices = [f"{i:02d}" for i in range(0, 60)]
 
     with gr.Blocks(
         elem_id="demo-root",
@@ -231,7 +258,6 @@ def create_demo() -> gr.Blocks:
                 elem_classes=["bridge-hidden"],
             )
 
-        # 홈 화면은 gr.Group 대신 gr.Column 사용
         with gr.Column(
             visible=True,
             elem_id="home-view",
@@ -316,11 +342,10 @@ def create_demo() -> gr.Blocks:
                             elem_classes=["live-panel-html"],
                         )
 
-                        with gr.Accordion(
-                            "디버그 / 원본 상태값",
-                            open=False,
+                        with gr.Group(
+                            visible=False,
                             elem_id="debug-panel-wrap",
-                            elem_classes=["debug-panel"],
+                            elem_classes=["bridge-hidden", "debug-panel"],
                         ):
                             status_box = gr.Textbox(label="Status", value="NORMAL")
                             alert_box = gr.Textbox(
@@ -350,7 +375,7 @@ def create_demo() -> gr.Blocks:
                     build_shell_header_html(
                         "Upload Analysis",
                         "녹화 영상 분석",
-                        "영상 업로드, 시간 지정, 추론 완료 후 자동 리포트 이동 흐름을 제공합니다.",
+                        "수업 영상을 업로드하여 분석하세요.",
                         back_target="upload-home-btn",
                         back_label="홈으로",
                         badge="UPLOAD",
@@ -364,89 +389,105 @@ def create_demo() -> gr.Blocks:
                     elem_classes=["upload-layout"],
                 ):
                     with gr.Column(
-                        scale=6,
                         elem_id="upload-main-column",
                         elem_classes=["upload-main-column"],
                     ):
                         with gr.Column(
-                            elem_id="upload-main-stack",
-                            elem_classes=["upload-main-stack"],
+                            elem_id="upload-upload-card",
+                            elem_classes=["upload-upload-card"],
                         ):
-                            gr.HTML(
-                                build_upload_intro_html(),
-                                elem_id="upload-intro-block",
-                                elem_classes=["upload-intro-wrap"],
-                            )
                             file_state_html = gr.HTML(
                                 build_upload_file_state_html(None),
                                 elem_id="upload-file-state-block",
                                 elem_classes=["upload-file-state-wrap"],
                             )
+
                             upload_file = gr.File(
-                                label="수업 영상 업로드",
+                                label="",
                                 file_count="single",
                                 type="filepath",
                                 elem_id="upload-file-input",
-                                elem_classes=["upload-file"],
+                                elem_classes=["upload-file", "figma-upload-input"],
                             )
+
                             upload_status = gr.Markdown(
                                 "영상 파일과 수업 시작 시간을 입력하면 분석을 시작할 수 있습니다.",
                                 elem_id="upload-status-markdown",
                                 elem_classes=["upload-status-markdown"],
                             )
 
+                        gr.HTML(
+                            build_upload_tip_html(),
+                            elem_id="upload-tip-block",
+                            elem_classes=["upload-tip-wrap"],
+                        )
+
                     with gr.Column(
-                        scale=4,
                         elem_id="upload-side-column",
                         elem_classes=["upload-side-column"],
                     ):
                         with gr.Column(
-                            elem_id="upload-side-stack",
-                            elem_classes=["upload-side-stack"],
+                            elem_id="upload-info-card",
+                            elem_classes=["upload-info-card"],
                         ):
                             gr.HTML(
-                                build_upload_feature_html(),
-                                elem_id="upload-feature-block",
-                                elem_classes=["upload-feature-wrap"],
+                                build_upload_info_card_html(),
+                                elem_id="upload-info-card-block",
+                                elem_classes=["upload-info-card-wrap"],
                             )
-                            gr.HTML(
-                                build_upload_time_intro_html(),
-                                elem_id="upload-time-intro-block",
-                                elem_classes=["upload-time-intro-wrap"],
-                            )
+
+                            with gr.Row(
+                                elem_id="upload-time-picker-row",
+                                elem_classes=["upload-time-picker-row"],
+                            ):
+                                meridiem_dropdown = gr.Dropdown(
+                                    choices=meridiem_choices,
+                                    value="오전",
+                                    label="",
+                                    container=False,
+                                    elem_id="upload-meridiem-dropdown",
+                                    elem_classes=[
+                                        "upload-time-dropdown",
+                                        "time-meridiem",
+                                    ],
+                                )
+                                hour_dropdown = gr.Dropdown(
+                                    choices=hour_choices,
+                                    value="09",
+                                    label="",
+                                    container=False,
+                                    elem_id="upload-hour-dropdown",
+                                    elem_classes=["upload-time-dropdown", "time-hour"],
+                                )
+                                minute_dropdown = gr.Dropdown(
+                                    choices=minute_choices,
+                                    value="00",
+                                    label="",
+                                    container=False,
+                                    elem_id="upload-minute-dropdown",
+                                    elem_classes=[
+                                        "upload-time-dropdown",
+                                        "time-minute",
+                                    ],
+                                )
+
                             time_preview = gr.HTML(
-                                build_upload_time_preview_html("09:00"),
+                                '<div class="upload-time-inline-note">리포트의 시간 표시에 사용됩니다.</div>',
                                 elem_id="upload-time-preview-block",
                                 elem_classes=["upload-time-preview-wrap"],
                             )
-                            hour_slider = gr.Slider(
-                                minimum=0,
-                                maximum=23,
-                                step=1,
-                                value=9,
-                                label="시",
-                                elem_id="hour-slider",
-                                elem_classes=["dial-slider", "dial-hour"],
-                            )
-                            minute_slider = gr.Slider(
-                                minimum=0,
-                                maximum=59,
-                                step=1,
-                                value=0,
-                                label="분",
-                                elem_id="minute-slider",
-                                elem_classes=["dial-slider", "dial-minute"],
-                            )
+
                             analyze_btn = gr.Button(
-                                "추론 시작",
+                                "✦ 분석 시작",
                                 elem_id="analyze-btn",
-                                elem_classes=["secondary-action"],
+                                elem_classes=["secondary-action", "upload-analyze-btn"],
                             )
-                            gr.HTML(
-                                build_upload_tip_html(),
-                                elem_id="upload-tip-block",
-                                elem_classes=["upload-tip-wrap"],
-                            )
+
+                        gr.HTML(
+                            build_upload_feature_html(),
+                            elem_id="upload-feature-block",
+                            elem_classes=["upload-feature-wrap"],
+                        )
 
         with gr.Group(
             visible=False,
@@ -578,18 +619,19 @@ def create_demo() -> gr.Blocks:
             outputs=[file_state_html],
         )
 
-        hour_slider.change(
-            fn=lambda h, m: build_upload_time_preview_html(
-                compose_class_start_time(h, m)
-            ),
-            inputs=[hour_slider, minute_slider],
+        meridiem_dropdown.change(
+            fn=_preview_upload_start_time,
+            inputs=[meridiem_dropdown, hour_dropdown, minute_dropdown],
             outputs=[time_preview],
         )
-        minute_slider.change(
-            fn=lambda h, m: build_upload_time_preview_html(
-                compose_class_start_time(h, m)
-            ),
-            inputs=[hour_slider, minute_slider],
+        hour_dropdown.change(
+            fn=_preview_upload_start_time,
+            inputs=[meridiem_dropdown, hour_dropdown, minute_dropdown],
+            outputs=[time_preview],
+        )
+        minute_dropdown.change(
+            fn=_preview_upload_start_time,
+            inputs=[meridiem_dropdown, hour_dropdown, minute_dropdown],
             outputs=[time_preview],
         )
 
@@ -598,19 +640,26 @@ def create_demo() -> gr.Blocks:
             outputs=[upload_status],
             show_progress="hidden",
         ).then(
-            fn=lambda file_path, hour, minute: _analyze_and_open_report(
-                file_path, compose_class_start_time(hour, minute)
+            fn=lambda file_path, meridiem, hour, minute: _analyze_upload_only(
+                file_path,
+                _compose_upload_start_time(meridiem, hour, minute),
             ),
-            inputs=[upload_file, hour_slider, minute_slider],
+            inputs=[
+                upload_file,
+                meridiem_dropdown,
+                hour_dropdown,
+                minute_dropdown,
+            ],
             outputs=[
-                home_view,
-                live_view,
-                upload_view,
-                report_view,
                 report_state,
                 report_html,
                 upload_status,
             ],
+            show_progress="minimal",
+        ).then(
+            fn=_go_report,
+            outputs=[home_view, live_view, upload_view, report_view],
+            show_progress="hidden",
         )
 
     demo.demo_css = css

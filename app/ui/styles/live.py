@@ -70,7 +70,6 @@ def build_live_css() -> str:
         #live-panel-column,
         #live-panel-html,
         #live-stage-html,
-        #debug-panel-wrap,
         #slots-json-output {{
             margin: 0 !important;
             padding: 0 !important;
@@ -98,9 +97,7 @@ def build_live_css() -> str:
         #live-stage-column.hide,
         #live-stage-column.hidden,
         #live-panel-column.hide,
-        #live-panel-column.hidden,
-        #debug-panel-wrap.hide,
-        #debug-panel-wrap.hidden {{
+        #live-panel-column.hidden {{
             display: none !important;
             height: 0 !important;
             min-height: 0 !important;
@@ -284,8 +281,7 @@ def build_live_css() -> str:
             gap: 12px;
         }}
 
-        .panel-card-head h3,
-        .panel-status-card h3 {{
+        .panel-card-head h3 {{
             margin: 4px 0 0;
             color: var(--text);
             font-size: 20px;
@@ -348,8 +344,6 @@ def build_live_css() -> str:
             flex-shrink: 0;
         }}
 
-        .panel-status-desc,
-        .panel-status-summary,
         .panel-empty,
         .panel-alert p {{
             margin: 12px 0 0;

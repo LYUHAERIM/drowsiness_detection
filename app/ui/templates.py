@@ -131,7 +131,7 @@ def build_home_footer_html() -> str:
 def build_stage_media_html(stage_media_url: str, stage_media_kind: str) -> str:
     if stage_media_kind == "video":
         return f"""
-        <video id="stage-bg-video" autoplay muted loop playsinline preload="metadata">
+        <video id="stage-bg-video" muted loop playsinline preload="metadata">
             <source src="{stage_media_url}" type="video/mp4">
         </video>
         """
@@ -169,15 +169,28 @@ def build_stage_html(stage_media_url: str, stage_media_kind: str) -> str:
     """
 
 
-def build_upload_intro_html() -> str:
+def build_upload_upload_card_html() -> str:
     return """
-    <section class="upload-intro">
-        <div class="upload-intro-head">
-            <div class="upload-intro-icon">⤴</div>
-            <div class="upload-intro-copy">
-                <div class="upload-intro-badge">Upload Analysis</div>
-                <h2>녹화 영상 업로드</h2>
-                <p>수업 영상을 업로드하고 수업 시작 시간을 선택하면 자동으로 분석 리포트를 생성합니다.</p>
+    <section class="upload-panel-card upload-panel-card-main">
+        <div class="upload-card-head">
+            <div class="upload-card-icon upload-card-icon-upload">⤴</div>
+            <div class="upload-card-copy">
+                <h3>영상 업로드</h3>
+                <p>분석할 수업 영상을 드래그하여 올려주세요</p>
+            </div>
+        </div>
+    </section>
+    """
+
+
+def build_upload_info_card_html() -> str:
+    return """
+    <section class="upload-panel-card upload-panel-card-info">
+        <div class="upload-card-head">
+            <div class="upload-card-icon upload-card-icon-time">◔</div>
+            <div class="upload-card-copy">
+                <h3>수업 정보</h3>
+                <p>수업 시작 시간을 입력해주세요</p>
             </div>
         </div>
     </section>
@@ -195,34 +208,26 @@ def build_upload_feature_html() -> str:
 
         <div class="upload-feature-list">
             <div class="upload-feature-item">
-                <div class="upload-feature-icon tone-emerald">🎞</div>
+                <div class="upload-feature-icon tone-emerald">◫</div>
                 <div class="upload-feature-copy">
-                    <strong>참여자 감지 및 추적</strong>
-                    <span>수업 영상 속 참여자 상태를 구간별로 확인합니다.</span>
+                    <strong>얼굴 감지 및 추적</strong>
+                    <span>모든 참여자의 얼굴을 실시간으로 추적합니다.</span>
                 </div>
             </div>
 
             <div class="upload-feature-item">
-                <div class="upload-feature-icon tone-amber">😴</div>
+                <div class="upload-feature-icon tone-amber">✦</div>
                 <div class="upload-feature-copy">
                     <strong>졸음 감지</strong>
-                    <span>눈, 얼굴 방향, 움직임 신호를 바탕으로 졸음 상태를 분석합니다.</span>
+                    <span>눈 깜빡임과 고개 움직임을 분석합니다.</span>
                 </div>
             </div>
 
             <div class="upload-feature-item">
-                <div class="upload-feature-icon tone-red">🚶</div>
+                <div class="upload-feature-icon tone-red">◎</div>
                 <div class="upload-feature-copy">
                     <strong>이탈 감지</strong>
-                    <span>자리 비움 또는 화면 이탈 구간을 리포트에 기록합니다.</span>
-                </div>
-            </div>
-
-            <div class="upload-feature-item">
-                <div class="upload-feature-icon tone-violet">📊</div>
-                <div class="upload-feature-copy">
-                    <strong>리포트 자동 생성</strong>
-                    <span>분석 완료 후 이벤트 로그와 참여자별 통계를 자동으로 정리합니다.</span>
+                    <span>최대 이탈 시간을 정확히 추적합니다.</span>
                 </div>
             </div>
         </div>
@@ -235,34 +240,10 @@ def build_upload_tip_html() -> str:
     <section class="upload-tip-card">
         <div class="upload-tip-title">💡 분석 팁</div>
         <ul class="upload-tip-list">
-            <li>참여자 얼굴이 비교적 선명한 영상을 사용하면 정확도가 높아집니다.</li>
-            <li>Zoom, Meet 등 썸네일이 잘 보이는 수업 영상을 권장합니다.</li>
-            <li>영상 길이가 길수록 추론 시간이 더 소요될 수 있습니다.</li>
+            <li>해상도가 높을수록 정확도가 향상됩니다.</li>
+            <li>참여자의 얼굴이 잘 보이는 영상을 업로드하세요.</li>
         </ul>
     </section>
-    """
-
-
-def build_upload_time_intro_html() -> str:
-    return """
-    <section class="upload-time-card">
-        <div class="upload-time-head">
-            <div class="upload-time-icon">🕘</div>
-            <div>
-                <h3>수업 시작 시간 설정</h3>
-                <p>리포트의 이벤트 시간 표시를 맞추기 위해 실제 수업 시작 시간을 선택합니다.</p>
-            </div>
-        </div>
-    </section>
-    """
-
-
-def build_upload_time_preview_html(time_text: str) -> str:
-    return f"""
-    <div class="upload-time-preview">
-        <div class="upload-time-preview-label">선택된 시작 시간</div>
-        <div class="upload-time-preview-value">{html.escape(time_text)}</div>
-    </div>
     """
 
 

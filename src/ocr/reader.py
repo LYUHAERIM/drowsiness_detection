@@ -10,13 +10,12 @@ from typing import Optional
 
 import cv2
 import numpy as np
+from src.teacher import is_teacher_name, normalize_person_name, resolve_teacher_names
 
 
 def _normalize_name(text: Optional[str]) -> str:
     """한글 글자만 추출 (공백 제거)."""
-    if text is None:
-        return ""
-    return "".join(ch for ch in str(text).strip().replace(" ", "") if "가" <= ch <= "힣")
+    return normalize_person_name(text)
 
 
 def _crop_name_region(thumb_bgr: np.ndarray, band_ratio: float = 0.30) -> np.ndarray:
@@ -48,7 +47,7 @@ class NameOCR:
     ):
         import easyocr
         self._reader = easyocr.Reader(lang or ["ko", "en"], gpu=gpu, verbose=False)
-        self._teacher_names = [_normalize_name(n) for n in (teacher_names or [])]
+        self._teacher_names = resolve_teacher_names(teacher_names)
         self._band_ratio = band_ratio
 
     def read_name(self, thumb_bgr: np.ndarray) -> tuple[str, float]:
@@ -88,13 +87,7 @@ class NameOCR:
 
     def is_teacher(self, name: str) -> bool:
         """이름이 강사 목록에 포함되는지 확인."""
-        name_n = _normalize_name(name)
-        if not name_n:
-            return False
-        for t in self._teacher_names:
-            if t and (t in name_n or name_n in t):
-                return True
-        return False
+        return is_teacher_name(name, self._teacher_names)
 
     def normalize(self, text: str) -> str:
         """한글만 추출하는 정규화 (외부 사용용)."""
