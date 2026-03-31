@@ -250,6 +250,7 @@ class ZoomPipeline:
         frame_idx: int,
         fps: float,
         fps_effective: Optional[float] = None,
+        enable_state_eval: bool = True,
     ) -> tuple[np.ndarray, list[dict]]:
         """
         프레임 한 장을 처리합니다.
@@ -428,51 +429,68 @@ class ZoomPipeline:
             )
             sl.prev_gray = curr_gray
 
-            # 졸음 상태 업데이트
-            raw_state, final_state, drowsy_reason = update_drowsiness_state(
-                sl, face_result, motion, det["cls"], fps_eff, ts, cfg.drowsiness
-            )
-            update_baselines(sl, face_result, final_state, ts, cfg.drowsiness)
-
-            # last_drowsy_ts 갱신
-            if final_state == "DROWSY":
-                sl.last_drowsy_ts = ts
-
-            # NoFace 폴백: 랜드마크 소실 시 상태 결정
-            # - 움직임 있음 (필기 등)          → NORMAL
-            # - 최근 DROWSY 이력 + 저모션      → DROWSY 유지
-            # - 이력 없음                      → NOFACE 표시
-            # is_noface(15프레임 확정)와 무관하게 얼굴이 사라진 첫 프레임부터 적용
-            face_gone = (
-                not face_result.lm_ok
-                and not face_result.face_ok
-                and det["cls"] not in ("person_off", "screen_off")
-            )
             display_noface = is_noface
-            if face_gone:
-                active_motion = (
-                    not np.isnan(motion) and motion > cfg.drowsiness.low_motion_th
+            if enable_state_eval:
+                # 졸음 상태 업데이트
+                raw_state, final_state, drowsy_reason = update_drowsiness_state(
+                    sl, face_result, motion, det["cls"], fps_eff, ts, cfg.drowsiness
                 )
-                recent_drowsy = (ts - sl.last_drowsy_ts) <= cfg.drowsy_noface_window_sec
-                if active_motion:
-                    final_state = "NORMAL"
-                    sl.current_state = "NORMAL"
-                    display_noface = False
-                elif recent_drowsy and sl.noface_consec <= cfg.noface_max_drowsy_hold:
-                    final_state = "DROWSY"
-                    sl.current_state = "DROWSY"
-                    display_noface = False
+                update_baselines(sl, face_result, final_state, ts, cfg.drowsiness)
 
-            if not sl.is_teacher:
-                sl.total_frames += 1
+                # last_drowsy_ts 갱신
                 if final_state == "DROWSY":
-                    sl.frames_drowsy += 1
-                elif final_state == "YAWN":
-                    sl.frames_yawn += 1
-                elif final_state == "ABSENT":
-                    sl.frames_absent += 1
-                else:
-                    sl.frames_normal += 1
+                    sl.last_drowsy_ts = ts
+
+                # NoFace 폴백: 랜드마크 소실 시 상태 결정
+                # - 움직임 있음 (필기 등)          → NORMAL
+                # - 최근 DROWSY 이력 + 저모션      → DROWSY 유지
+                # - 이력 없음                      → NOFACE 표시
+                # is_noface(15프레임 확정)와 무관하게 얼굴이 사라진 첫 프레임부터 적용
+                face_gone = (
+                    not face_result.lm_ok
+                    and not face_result.face_ok
+                    and det["cls"] not in ("person_off", "screen_off")
+                )
+                if face_gone:
+                    active_motion = (
+                        not np.isnan(motion) and motion > cfg.drowsiness.low_motion_th
+                    )
+                    recent_drowsy = (
+                        ts - sl.last_drowsy_ts
+                    ) <= cfg.drowsy_noface_window_sec
+                    if active_motion:
+                        final_state = "NORMAL"
+                        sl.current_state = "NORMAL"
+                        display_noface = False
+                    elif (
+                        recent_drowsy
+                        and sl.noface_consec <= cfg.noface_max_drowsy_hold
+                    ):
+                        final_state = "DROWSY"
+                        sl.current_state = "DROWSY"
+                        display_noface = False
+
+                if not sl.is_teacher:
+                    sl.total_frames += 1
+                    if final_state == "DROWSY":
+                        sl.frames_drowsy += 1
+                    elif final_state == "YAWN":
+                        sl.frames_yawn += 1
+                    elif final_state == "ABSENT":
+                        sl.frames_absent += 1
+                    else:
+                        sl.frames_normal += 1
+            else:
+                _reset_timers(sl, clear_perclos=True)
+                sl.raw_hist.clear()
+                sl.current_state = "NORMAL"
+                sl.absent_hold = 0
+                sl.present_hold = 0
+                sl.wake_motion_frames = 0
+                sl.last_drowsy_ts = -1.0
+                raw_state = "IGNORE"
+                final_state = "IGNORE"
+                drowsy_reason = "warmup_skip"
 
             # OCR (필요할 때만)
             self._try_ocr(sl, thumb, frame_idx)
@@ -546,6 +564,8 @@ class ZoomPipeline:
 
         # ── 미탐지 슬롯(화면 이탈) → ABSENT 레코드 추가 ──────────────────────────
         for sid in um_slots:
+            if not enable_state_eval:
+                continue
             sl = self._slots.get(sid)
             if sl is None or sl.misses > int(cfg.slot_max_miss_sec * fps):
                 continue

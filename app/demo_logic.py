@@ -21,6 +21,9 @@ ALERT_COOLDOWN_SEC = 30
 PANEL_STATE: dict[str, Any] = {
     "is_running": False,
     "session_started_at": None,
+    "is_warming_up": False,
+    "warmup_until": None,
+    "pipeline_ready": False,
     "slot_stats": {},
     "prev_statuses": {},
     "last_alert_time": {},
@@ -30,9 +33,8 @@ PANEL_STATE: dict[str, Any] = {
 }
 
 
-def _reset_panel_state() -> None:
-    PANEL_STATE["is_running"] = True
-    PANEL_STATE["session_started_at"] = time.time()
+def _clear_panel_metrics(started_at: float | None = None) -> None:
+    PANEL_STATE["session_started_at"] = started_at
     PANEL_STATE["slot_stats"] = {}
     PANEL_STATE["prev_statuses"] = {}
     PANEL_STATE["last_alert_time"] = {}
@@ -41,8 +43,29 @@ def _reset_panel_state() -> None:
     PANEL_STATE["last_timeline_bucket"] = -1
 
 
+def _reset_panel_state() -> None:
+    PANEL_STATE["is_running"] = True
+    _clear_panel_metrics()
+    PANEL_STATE["is_warming_up"] = True
+    PANEL_STATE["warmup_until"] = None
+    PANEL_STATE["pipeline_ready"] = False
+
+
 def _stop_panel_state() -> None:
     PANEL_STATE["is_running"] = False
+    PANEL_STATE["is_warming_up"] = False
+    PANEL_STATE["warmup_until"] = None
+    PANEL_STATE["pipeline_ready"] = False
+
+
+def _apply_runtime_flags(snapshot: RuntimeSnapshot) -> None:
+    PANEL_STATE["is_warming_up"] = snapshot.is_warming_up
+    PANEL_STATE["warmup_until"] = snapshot.warmup_until or None
+    PANEL_STATE["pipeline_ready"] = snapshot.pipeline_ready
+
+
+def _begin_active_session() -> None:
+    _clear_panel_metrics(started_at=time.time())
 
 
 def _now_ts() -> datetime:
@@ -104,6 +127,13 @@ def _push_alert(alert_type: Status, message: str) -> None:
 def _sync_panel_state(snapshot: RuntimeSnapshot) -> None:
     if not PANEL_STATE["is_running"]:
         return
+
+    was_ready = PANEL_STATE["pipeline_ready"]
+    _apply_runtime_flags(snapshot)
+    if snapshot.is_warming_up:
+        return
+    if snapshot.pipeline_ready and not was_ready:
+        _begin_active_session()
 
     for slot in snapshot.slots:
         if slot.is_teacher:
@@ -283,34 +313,6 @@ def _build_control_panel(is_running: bool) -> str:
     """
 
 
-def _build_status_card(status: str, slots: list) -> str:
-    slots = student_slots(slots)
-    meta = _status_meta(status)
-    slot_count = len(slots)
-    drowsy_count = sum(1 for s in slots if s.status == "DROWSY")
-    absent_count = sum(1 for s in slots if s.status == "ABSENT")
-
-    summary = f"감지된 학생 {slot_count}명"
-    if drowsy_count:
-        summary += f" · 졸음 {drowsy_count}명"
-    if absent_count:
-        summary += f" · 이탈 {absent_count}명"
-
-    return f"""
-    <section class="panel-card panel-status-card" style="background:{meta['bg']}; border-color:{meta['color']}33;">
-        <div class="panel-card-head">
-            <div>
-                <div class="panel-eyebrow">Current Status</div>
-                <h3>{meta['label']}</h3>
-            </div>
-            <div class="panel-status-dot" style="background:{meta['color']};"></div>
-        </div>
-        <p class="panel-status-desc">{meta['desc']}</p>
-        <div class="panel-status-summary">{summary}</div>
-    </section>
-    """
-
-
 def _build_slot_list(slots: list) -> str:
     slots = student_slots(slots)
     rows = []
@@ -395,7 +397,7 @@ def render_panel_html(
     is_running: bool,
     slots: Optional[list] = None,
 ) -> str:
-    del camera_state, alert, report
+    del camera_state
 
     if slots is None:
         slots = []
@@ -784,18 +786,20 @@ def analyze_uploaded_video(
 
 def _render_outputs(snapshot: RuntimeSnapshot, ack: int, _annotated_frame=None):
     slots = list(snapshot.slots)
+    alert_text = _latest_alert_text()
+    report_text = _report_text()
     panel_html = render_panel_html(
         camera_state="ON" if snapshot.running else "OFF",
         status=snapshot.status,
-        alert=_latest_alert_text(),
-        report=_report_text(),
+        alert=alert_text,
+        report=report_text,
         is_running=snapshot.running,
         slots=student_slots(slots),
     )
     return (
         snapshot.status,
-        _latest_alert_text(),
-        _report_text(),
+        alert_text,
+        report_text,
         panel_html,
         _debug_text(snapshot),
         ack,
@@ -806,7 +810,7 @@ def _render_outputs(snapshot: RuntimeSnapshot, ack: int, _annotated_frame=None):
 def on_start():
     _reset_panel_state()
     snapshot = RUNTIME.start()
-    _sync_panel_state(snapshot)
+    _apply_runtime_flags(snapshot)
 
     panel_html = render_panel_html(
         camera_state="ON",
@@ -831,6 +835,7 @@ def on_start():
 def on_stop(frame_ack: int):
     _stop_panel_state()
     snapshot = RUNTIME.stop()
+    _apply_runtime_flags(snapshot)
 
     panel_html = render_panel_html(
         camera_state="OFF",

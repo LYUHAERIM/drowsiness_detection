@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -13,6 +14,7 @@ if not logging.getLogger().handlers:
 LOGGER = logging.getLogger(__name__)
 
 ENGINE = LiveZoomEngine(checkpoint_path=YOLO_CHECKPOINT_PATH, fps=5.0)
+WARMUP_SECONDS = 2.0
 
 
 @dataclass(frozen=True)
@@ -25,6 +27,9 @@ class RuntimeSnapshot:
     frame_received: bool
     frame_index: int
     running: bool
+    is_warming_up: bool = False
+    warmup_until: float = 0.0
+    pipeline_ready: bool = False
     slots: list[SlotInfo] = field(default_factory=list)
 
 
@@ -41,6 +46,34 @@ class LiveInferenceRuntime:
             frame_received=False,
             frame_index=0,
             running=False,
+            is_warming_up=False,
+            warmup_until=0.0,
+            pipeline_ready=False,
+            slots=[],
+        )
+        self._warmup_until = 0.0
+
+    def _build_warmup_snapshot(
+        self, result: LiveInferenceResult, *, frame_received: bool
+    ) -> RuntimeSnapshot:
+        remaining = max(0.0, self._warmup_until - time.time())
+        debug_text = (
+            f"warmup=True remaining={remaining:.2f}s "
+            f"frame_received={frame_received} frame_index={result.frame_index} "
+            f"{result.debug_text}"
+        )
+        return RuntimeSnapshot(
+            status="INIT",
+            alert="",
+            report="",
+            debug_text=debug_text,
+            reason="warmup",
+            frame_received=frame_received,
+            frame_index=result.frame_index,
+            running=True,
+            is_warming_up=True,
+            warmup_until=self._warmup_until,
+            pipeline_ready=False,
             slots=[],
         )
 
@@ -49,15 +82,22 @@ class LiveInferenceRuntime:
             LOGGER.info("Live inference started")
             ENGINE.reset()
             self._running = True
+            self._warmup_until = time.time() + WARMUP_SECONDS
             self._last_snapshot = RuntimeSnapshot(
-                status="NORMAL",
-                alert="실시간 분석을 시작했습니다.",
-                report="카메라가 시작되었습니다.\n첫 프레임을 기다리는 중입니다.",
-                debug_text="running=True frame_received=False reason=waiting_first_frame",
-                reason="waiting_first_frame",
+                status="INIT",
+                alert="",
+                report="",
+                debug_text=(
+                    "running=True frame_received=False reason=warmup "
+                    f"warmup_until={self._warmup_until:.3f}"
+                ),
+                reason="warmup",
                 frame_received=False,
                 frame_index=0,
                 running=True,
+                is_warming_up=True,
+                warmup_until=self._warmup_until,
+                pipeline_ready=False,
                 slots=[],
             )
             return self._last_snapshot
@@ -66,6 +106,7 @@ class LiveInferenceRuntime:
         with self._lock:
             LOGGER.info("Live inference stopped after %s frames", ENGINE.frame_count)
             self._running = False
+            self._warmup_until = 0.0
             self._last_snapshot = RuntimeSnapshot(
                 status=self._last_snapshot.status,
                 alert="카메라가 중지되었습니다.",
@@ -78,6 +119,9 @@ class LiveInferenceRuntime:
                 frame_received=self._last_snapshot.frame_received,
                 frame_index=self._last_snapshot.frame_index,
                 running=False,
+                is_warming_up=False,
+                warmup_until=0.0,
+                pipeline_ready=False,
                 slots=self._last_snapshot.slots,
             )
             return self._last_snapshot
@@ -97,7 +141,18 @@ class LiveInferenceRuntime:
                 return self._last_snapshot, None
 
             try:
-                result: LiveInferenceResult = ENGINE.analyze_data_url(data_url)
+                is_warming_up = time.time() < self._warmup_until
+                result: LiveInferenceResult = ENGINE.analyze_data_url(
+                    data_url,
+                    warming_up=is_warming_up,
+                )
+                if is_warming_up:
+                    self._last_snapshot = self._build_warmup_snapshot(
+                        result,
+                        frame_received=result.frame_received,
+                    )
+                    return self._last_snapshot, result.annotated_frame
+
                 debug_text = (
                     f"frame_received={result.frame_received} "
                     f"frame_index={result.frame_index} "
@@ -112,6 +167,9 @@ class LiveInferenceRuntime:
                     frame_received=result.frame_received,
                     frame_index=result.frame_index,
                     running=True,
+                    is_warming_up=False,
+                    warmup_until=self._warmup_until,
+                    pipeline_ready=True,
                     slots=result.slots,
                 )
                 return self._last_snapshot, result.annotated_frame
@@ -126,6 +184,9 @@ class LiveInferenceRuntime:
                     frame_received=bool(data_url),
                     frame_index=ENGINE.frame_count,
                     running=True,
+                    is_warming_up=False,
+                    warmup_until=self._warmup_until,
+                    pipeline_ready=False,
                     slots=[],
                 )
                 return self._last_snapshot, None

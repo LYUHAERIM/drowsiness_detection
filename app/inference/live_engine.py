@@ -119,17 +119,21 @@ class LiveZoomEngine:
                 pass
             self._pipeline = None
 
-    def analyze_data_url(self, data_url: str) -> LiveInferenceResult:
+    def analyze_data_url(
+        self, data_url: str, *, warming_up: bool = False
+    ) -> LiveInferenceResult:
         frame = decode_data_url_to_bgr(data_url)
-        return self.analyze_bgr(frame)
+        return self.analyze_bgr(frame, warming_up=warming_up)
 
-    def analyze_bgr(self, frame: Optional[np.ndarray]) -> LiveInferenceResult:
+    def analyze_bgr(
+        self, frame: Optional[np.ndarray], *, warming_up: bool = False
+    ) -> LiveInferenceResult:
         if frame is None:
             return LiveInferenceResult(
                 slots=[],
-                status="NORMAL",
-                alert="프레임을 아직 받지 못했습니다.",
-                report="실시간 카메라 프레임 대기 중",
+                status="INIT" if warming_up else "NORMAL",
+                alert="",
+                report="",
                 debug_text="frame=None",
                 frame_received=False,
                 frame_index=self.frame_count,
@@ -141,6 +145,7 @@ class LiveZoomEngine:
             frame,
             frame_idx=self.frame_count,
             fps=self.fps,
+            enable_state_eval=not warming_up,
         )
 
         # records → SlotInfo 목록으로 변환
@@ -207,6 +212,19 @@ class LiveZoomEngine:
                     face_box_pct=face_box_pct,
                     noface=noface,
                 )
+            )
+
+        if warming_up:
+            debug_text = f"frame={self.frame_count} warmup=True slots={len(slots)}"
+            return LiveInferenceResult(
+                slots=[],
+                status="INIT",
+                alert="",
+                report="",
+                debug_text=debug_text,
+                frame_received=True,
+                frame_index=self.frame_count,
+                annotated_frame=canvas,
             )
 
         # 실시간 UI에서는 YAWN을 NORMAL로 취급

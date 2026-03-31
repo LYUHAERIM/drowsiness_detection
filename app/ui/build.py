@@ -316,11 +316,10 @@ def create_demo() -> gr.Blocks:
                             elem_classes=["live-panel-html"],
                         )
 
-                        with gr.Accordion(
-                            "디버그 / 원본 상태값",
-                            open=False,
+                        with gr.Group(
+                            visible=False,
                             elem_id="debug-panel-wrap",
-                            elem_classes=["debug-panel"],
+                            elem_classes=["bridge-hidden", "debug-panel"],
                         ):
                             status_box = gr.Textbox(label="Status", value="NORMAL")
                             alert_box = gr.Textbox(
