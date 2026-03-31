@@ -1,12 +1,16 @@
 import json
+import math
 import time
+from base64 import b64decode
 from copy import deepcopy
 from datetime import datetime
+from io import BytesIO
 from pathlib import Path
 from typing import Any, Optional
 
 import cv2
 import gradio as gr
+from PIL import Image
 
 from app.config import BASE_DIR, YOLO_CHECKPOINT_PATH
 from app.inference.runtime import RUNTIME, RuntimeSnapshot
@@ -17,6 +21,8 @@ from src.teacher import is_teacher_name, student_slots
 Status = str
 
 ALERT_COOLDOWN_SEC = 30
+REPORT_EXPORT_DIR = BASE_DIR / "outputs" / "reports"
+PDF_PAGE_RATIO = 297 / 210
 
 PANEL_STATE: dict[str, Any] = {
     "is_running": False,
@@ -241,6 +247,102 @@ def _video_duration_sec(video_path: str) -> int:
         return int(frame_count / fps)
     finally:
         capture.release()
+
+
+def _decode_capture_data_url(data_url: str) -> Image.Image:
+    if "," not in data_url:
+        raise ValueError("캡처 이미지 형식이 올바르지 않습니다.")
+
+    _, encoded = data_url.split(",", 1)
+    image = Image.open(BytesIO(b64decode(encoded)))
+    if image.mode == "RGBA":
+        background = Image.new("RGB", image.size, "#0a0e1a")
+        background.paste(image, mask=image.getchannel("A"))
+        return background
+    return image.convert("RGB")
+
+
+def _pdf_safe_filename(prefix: str = "report") -> str:
+    return f"{prefix}_{datetime.now().strftime('%Y-%m-%d_%H%M')}.pdf"
+
+
+def _split_image_for_pdf(image: Image.Image) -> list[Image.Image]:
+    page_height = max(int(round(image.width * PDF_PAGE_RATIO)), 1)
+    pages: list[Image.Image] = []
+
+    for top in range(0, image.height, page_height):
+        lower = min(top + page_height, image.height)
+        crop = image.crop((0, top, image.width, lower))
+        if crop.height < page_height:
+            padded = Image.new("RGB", (image.width, page_height), "#0a0e1a")
+            padded.paste(crop, (0, 0))
+            crop = padded
+        pages.append(crop)
+
+    return pages or [image]
+
+
+def create_report_pdf_from_capture(
+    capture_payload: str,
+    report_data: dict[str, Any] | None,
+):
+    if not capture_payload.strip():
+        return (
+            gr.update(value=None, visible=False),
+            gr.update(
+                value="리포트 화면을 캡처하지 못했습니다. 리포트가 보이는 상태에서 다시 시도해주세요.",
+                visible=True,
+            ),
+        )
+
+    payload = json.loads(capture_payload)
+    slices = payload.get("slices", [])
+    if not slices:
+        return (
+            gr.update(value=None, visible=False),
+            gr.update(
+                value="캡처된 리포트 이미지가 없습니다. 잠시 후 다시 시도해주세요.",
+                visible=True,
+            ),
+        )
+
+    rendered_slices = [_decode_capture_data_url(item["data_url"]) for item in slices]
+    total_height = sum(image.height for image in rendered_slices)
+    max_width = max(image.width for image in rendered_slices)
+
+    stitched = Image.new("RGB", (max_width, total_height), "#0a0e1a")
+    cursor_y = 0
+    for image in rendered_slices:
+        if image.width != max_width:
+            resized_height = max(1, math.ceil(image.height * (max_width / image.width)))
+            image = image.resize((max_width, resized_height), Image.Resampling.LANCZOS)
+        stitched.paste(image, (0, cursor_y))
+        cursor_y += image.height
+
+    pages = _split_image_for_pdf(stitched)
+    REPORT_EXPORT_DIR.mkdir(parents=True, exist_ok=True)
+
+    badge = str((report_data or {}).get("badge", "")).lower()
+    prefix = "upload_report" if badge.startswith("upload") else "report"
+    output_path = REPORT_EXPORT_DIR / _pdf_safe_filename(prefix)
+
+    first_page, *other_pages = pages
+    first_page.save(
+        output_path,
+        "PDF",
+        resolution=144.0,
+        save_all=True,
+        append_images=other_pages,
+    )
+
+    page_count = len(pages)
+    return (
+        gr.update(value=str(output_path), visible=True),
+        gr.update(
+            value=f"PDF 생성 완료: `{output_path.name}` ({page_count} page{'s' if page_count > 1 else ''})",
+            visible=True,
+        ),
+    )
 
 
 def _latest_alert_text() -> str:

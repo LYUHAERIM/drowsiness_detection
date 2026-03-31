@@ -20,6 +20,7 @@ dependencies = [
     "onnxslim>=0.1.89",
     "opencv-python>=4.13.0.92",
     "pandas>=3.0.1",
+    "pillow>=12.1.1",
     "python-dotenv>=1.2.2",
     "seaborn>=0.13.2",
     "torch>=2.10.0",

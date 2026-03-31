@@ -7,6 +7,7 @@ from app.config import STAGE_MEDIA_PATH
 from app.demo_logic import (
     analyze_uploaded_video,
     build_empty_report_data,
+    create_report_pdf_from_capture,
     describe_uploaded_file,
     on_start,
     on_stop,
@@ -257,6 +258,18 @@ def create_demo() -> gr.Blocks:
                 elem_id="frame-submit-btn",
                 elem_classes=["bridge-hidden"],
             )
+            report_capture_payload_box = gr.Textbox(
+                value="",
+                lines=8,
+                label="report-capture-payload",
+                elem_id="report-capture-payload",
+                elem_classes=["bridge-hidden"],
+            )
+            report_download_submit_btn = gr.Button(
+                "submit-report-download",
+                elem_id="report-download-submit-btn",
+                elem_classes=["bridge-hidden"],
+            )
 
         with gr.Column(
             visible=True,
@@ -503,6 +516,23 @@ def create_demo() -> gr.Blocks:
                     elem_id="report-html-shell",
                     elem_classes=["report-html-shell"],
                 )
+                with gr.Column(
+                    elem_id="report-download-panel",
+                    elem_classes=["report-download-panel"],
+                ):
+                    report_download_status = gr.Markdown(
+                        value="",
+                        visible=False,
+                        elem_id="report-download-status",
+                        elem_classes=["report-download-status"],
+                    )
+                    report_download_file = gr.File(
+                        label="리포트 PDF",
+                        visible=False,
+                        interactive=False,
+                        elem_id="report-download-file",
+                        elem_classes=["report-download-file"],
+                    )
 
         is_running_state = gr.State(False)
 
@@ -611,6 +641,13 @@ def create_demo() -> gr.Blocks:
             js="() => { stopOverlayCamera(true); }",
             queue=False,
             show_progress="hidden",
+        ).then(
+            fn=lambda: (
+                gr.update(value="", visible=False),
+                gr.update(value=None, visible=False),
+            ),
+            outputs=[report_download_status, report_download_file],
+            show_progress="hidden",
         )
 
         upload_file.change(
@@ -657,8 +694,23 @@ def create_demo() -> gr.Blocks:
             ],
             show_progress="minimal",
         ).then(
+            fn=lambda: (
+                gr.update(value="", visible=False),
+                gr.update(value=None, visible=False),
+            ),
+            outputs=[report_download_status, report_download_file],
+            show_progress="hidden",
+        ).then(
             fn=_go_report,
             outputs=[home_view, live_view, upload_view, report_view],
+            show_progress="hidden",
+        )
+
+        report_download_submit_btn.click(
+            fn=create_report_pdf_from_capture,
+            inputs=[report_capture_payload_box, report_state],
+            outputs=[report_download_file, report_download_status],
+            queue=False,
             show_progress="hidden",
         )
 

@@ -734,6 +734,29 @@ def build_report_css() -> str:
             border-color: rgba(245, 158, 11, 0.22);
         }
 
+        .report-download-panel {
+            margin-top: 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .report-download-status {
+            margin: 0 !important;
+            padding: 14px 18px !important;
+            border-radius: 14px;
+            border: 1px solid rgba(37, 99, 235, 0.22);
+            background: rgba(15, 23, 42, 0.82);
+            color: #cbd5e1 !important;
+        }
+
+        .report-download-file {
+            padding: 14px !important;
+            border-radius: 16px;
+            border: 1px solid rgba(30, 41, 59, 0.8) !important;
+            background: rgba(15, 23, 42, 0.82) !important;
+        }
+
         .report-animate {
             opacity: 0;
             transform: translateY(18px);

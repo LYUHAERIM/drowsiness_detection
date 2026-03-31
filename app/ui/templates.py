@@ -519,13 +519,11 @@ def build_report_html(report_data: dict[str, Any] | None) -> str:
     )
 
     action_buttons = (
-        '<button class="report-download-btn">↓ PDF</button><button class="report-download-btn">↓ Excel</button>'
-        if is_upload_report
-        else '<button class="report-download-btn">↓ 리포트 다운로드</button>'
+        '<button type="button" class="report-download-btn" onclick="captureReportForPdf()">↓ 리포트 다운로드</button>'
     )
 
     return f"""
-    <section class="report-shell report-shell-realtime">
+    <section id="report-capture-root" class="report-shell report-shell-realtime" data-report-title="{html.escape(title)}">
         <div class="report-topbar">
             <div class="report-topbar-main">
                 <div class="report-topbar-nav-left">
