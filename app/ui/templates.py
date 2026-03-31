@@ -242,7 +242,6 @@ def build_upload_tip_html() -> str:
         <ul class="upload-tip-list">
             <li>해상도가 높을수록 정확도가 향상됩니다.</li>
             <li>참여자의 얼굴이 잘 보이는 영상을 업로드하세요.</li>
-            <li>1시간 영상 기준 약 5~10분 소요됩니다.</li>
         </ul>
     </section>
     """

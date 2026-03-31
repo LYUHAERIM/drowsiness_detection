@@ -10,6 +10,9 @@ def build_upload_css() -> str:
         #upload-view > .gr-block,
         #upload-view > .gr-block::before,
         #upload-view > .gr-block::after,
+        #upload-view > .gr-block > .gr-block,
+        #upload-view > .gr-block > .gr-block::before,
+        #upload-view > .gr-block > .gr-block::after,
         #upload-view .gr-group,
         #upload-view .gr-group::before,
         #upload-view .gr-group::after,
@@ -79,6 +82,21 @@ def build_upload_css() -> str:
             background:
                 radial-gradient(circle at 50% 0%, rgba(17, 24, 39, 0.55), transparent 48%),
                 linear-gradient(180deg, #091122 0%, #040b1d 100%) !important;
+            border: 1px solid #040b1d !important;
+            border-color: #040b1d !important;
+            box-shadow: none !important;
+            outline: none !important;
+        }
+
+        .upload-page-shell > .gr-block,
+        .upload-page-shell > .gr-block > .gr-block,
+        .upload-page-inner,
+        .upload-page-inner > .gr-block {
+            background: #040b1d !important;
+            border: 1px solid #040b1d !important;
+            border-color: #040b1d !important;
+            box-shadow: none !important;
+            outline: none !important;
         }
 
         .upload-page-inner {
@@ -89,9 +107,9 @@ def build_upload_css() -> str:
         }
 
         .upload-layout {
-            width: min(1180px, calc(100vw - 48px)) !important;
+            width: min(1280px, calc(100vw - 40px)) !important;
             margin: 0 auto !important;
-            padding: 28px 0 40px !important;
+            padding: 28px 0 100px !important;
             display: grid !important;
             grid-template-columns: minmax(0, 1.2fr) minmax(340px, 0.82fr);
             gap: 28px !important;
@@ -100,7 +118,7 @@ def build_upload_css() -> str:
         }
 
         #upload-shell-header {
-            width: min(1180px, calc(100vw - 48px)) !important;
+            width: min(1280px, calc(100vw - 40px)) !important;
             margin: 0 auto !important;
         }
 
@@ -465,7 +483,7 @@ def build_upload_css() -> str:
 
         @media (max-width: 1100px) {
             .upload-layout {
-                width: min(100%, calc(100vw - 32px)) !important;
+                width: min(100%, calc(100vw - 28px)) !important;
                 grid-template-columns: 1fr !important;
                 gap: 20px !important;
             }
@@ -475,7 +493,7 @@ def build_upload_css() -> str:
             #upload-shell-header,
             .upload-layout {
                 width: min(100%, calc(100vw - 24px)) !important;
-                padding: 20px 0 28px !important;
+                padding: 20px 0 88px !important;
             }
 
             .upload-card-copy h3 {
